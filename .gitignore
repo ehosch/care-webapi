@@ -461,6 +461,7 @@ src/Host/Configurations/hangfire.json
 src/Host/Configurations/mail.json
 src/Host/Configurations/security.json
 src/Host/Configurations/sms.json
-# Local environment variables — use .env.example as template
+# Local environment variables — use .env.example / .env.full.example as templates
 .env
+.env.full
 .env.debug

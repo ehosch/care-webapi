@@ -1,0 +1,74 @@
+# Quickstart: the whole app (MySQL + API + WASM frontend) using the published
+# images from ghcr.io — no source checkout or build required. See README.md
+# "Quickstart (full stack)" for setup instructions and customization.
+#
+# For local development against source (build the API image from this repo),
+# use docker-compose.yml instead.
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: care-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?set DB_ROOT_PASSWORD in .env}
+      MYSQL_DATABASE: careDb
+    volumes:
+      - care-mysql-data:/var/lib/mysql
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-uroot", "-p${DB_ROOT_PASSWORD:?set DB_ROOT_PASSWORD in .env}", "--silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    image: ghcr.io/ehosch/care-webapi:latest
+    container_name: care-webapi
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_HTTP_PORTS=8080
+      - DatabaseSettings__ConnectionString=server=mysql;uid=root;pwd=${DB_ROOT_PASSWORD};database=careDb;Allow User Variables=True
+      - HangfireSettings__Storage__ConnectionString=server=mysql;uid=root;pwd=${DB_ROOT_PASSWORD};database=careDb;Allow User Variables=True
+      - HangfireSettings__Credentials__User=Admin
+      - HangfireSettings__Credentials__Password=${HANGFIRE_PASSWORD:?set HANGFIRE_PASSWORD in .env}
+      - HangfireSettings__Route=/jobs
+      - HangfireSettings__Dashboard__AppPath=/
+      - HangfireSettings__Dashboard__StatsPollingInterval=2000
+      - HangfireSettings__Dashboard__DashboardTitle=Jobs
+      - MailSettings__Host=${MAIL_HOST}
+      - MailSettings__Port=${MAIL_PORT}
+      - MailSettings__From=${MAIL_FROM}
+      - MailSettings__DisplayName=${MAIL_DISPLAY_NAME:-Care Coordination}
+      - MailSettings__UserName=${MAIL_USERNAME}
+      - MailSettings__Password=${MAIL_PASSWORD}
+      - SecuritySettings__RequireConfirmedAccount=${REQUIRE_CONFIRMED_ACCOUNT:-false}
+      - SecuritySettings__JwtSettings__Key=${JWT_KEY:?set JWT_KEY in .env (32+ chars)}
+      - SecuritySettings__JwtSettings__TokenExpirationInMinutes=10080
+      - SecuritySettings__JwtSettings__RefreshTokenExpirationInDays=30
+      - SmsSettings__AccountSid=${TWILIO_ACCOUNT_SID}
+      - SmsSettings__AuthToken=${TWILIO_AUTH_TOKEN}
+      - SmsSettings__FromNumber=${TWILIO_FROM_NUMBER}
+      - CorsSettings__Blazor=${WASM_URL:?set WASM_URL in .env, e.g. https://care.yourdomain.example}
+    ports:
+      - "${API_PORT:-5010}:8080"
+    restart: on-failure
+
+  wasm:
+    image: ghcr.io/ehosch/care-wasm:latest
+    container_name: care-wasm
+    depends_on:
+      - api
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_HTTP_PORTS=8080
+      - API_BASE_URL=${API_URL:?set API_URL in .env, e.g. https://api.yourdomain.example}
+    ports:
+      - "${WASM_PORT:-5011}:8080"
+    restart: on-failure
+
+volumes:
+  care-mysql-data:
