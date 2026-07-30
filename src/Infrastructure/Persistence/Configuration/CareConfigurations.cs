@@ -27,6 +27,7 @@ public class ReplacementRequestConfig : IEntityTypeConfiguration<ReplacementRequ
     {
         builder.Property(r => r.RequestedByUserId).HasMaxLength(450).IsRequired();
         builder.Property(r => r.ClaimedByUserId).HasMaxLength(450);
+        builder.HasIndex(r => r.Status);
     }
 }
 

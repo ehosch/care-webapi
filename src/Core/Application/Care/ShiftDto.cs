@@ -10,4 +10,6 @@ public record ShiftDto(
     TimeSpan EndTime,
     string? AssignedUserId,
     string? AssignedUserName,
-    ShiftStatus Status);
+    ShiftStatus Status,
+    Guid? PendingReplacementRequestId,
+    string? PendingReplacementRequestedByUserId);

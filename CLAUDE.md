@@ -11,7 +11,7 @@ frontend: `../care-wasm/`.
 ```
 src/
 ├── Core/Domain/          # Entities: Invite, Document, ShiftTemplate, Shift, ReplacementRequest, ShiftNote
-├── Core/Application/     # Interfaces (ITokenService, IUserService, IMailService, IDocumentService, IDocumentStorageService, IShiftService) + DTOs — see note below
+├── Core/Application/     # Interfaces (ITokenService, IUserService, IMailService, IDocumentService, IDocumentStorageService, IShiftService — shifts + replacement requests) + DTOs — see note below
 ├── Infrastructure/       # EF Core (MySQL/Pomelo), ASP.NET Identity, JWT auth, Hangfire, Mailing, Serilog, NSwag
 ├── Host/                 # ASP.NET Core entry point, controllers, Configurations/
 └── Migrators/Migrators.MySQL/  # EF Core migrations project
@@ -224,6 +224,41 @@ the compose file.
   own "adjustable, admin-configurable later" framing for `ShiftTemplate`.
   Don't add template CRUD without checking this is still the desired scope.
 
+## Known gotchas from Phase 4 (Self-Assign & Replacement Requests)
+
+- **`ReplacementRequest`/`ReplacementRequestStatus` entities, DbSet, and a
+  no-op `ReplacementRequestConfig` all existed since Phase 0** — same
+  "entity pre-built, logic missing" situation Phase 3 found for
+  `ShiftTemplate`/`Shift`. No FK constraint on `ReplacementRequest.ShiftId`
+  (plain column, no navigation property) — matches this codebase's flat-FK
+  style elsewhere (`Document.UploadedByUserId`, etc.), so Phase 4 didn't
+  introduce a real EF relationship either.
+- **All new business rules live in `ShiftService`, not a separate
+  `ReplacementRequestService`** — claiming a replacement request mutates
+  both the `ReplacementRequest` row and the `Shift` row atomically in one
+  `ApplicationDbContext`, so keeping both in one service avoids a
+  cross-service transaction.
+- **Exception choice follows an existing split, not a new convention**:
+  state-conflicts (shift already claimed, request no longer pending) throw
+  `ConflictException` (409); "wrong person" checks (not the assigned user
+  requesting a replacement, not the requester cancelling) throw
+  `ForbiddenException` (403) — matches `UserService`'s existing
+  `ConflictException` usage for state rules and
+  `ConfigureJwtBearerOptions.cs`'s existing `ForbiddenException` usage for
+  authorization-flavored rules.
+- **`AssignShiftAsync` (Admin direct-assign) must cancel any `Pending`
+  `ReplacementRequest` for that shift** before applying the new assignment —
+  otherwise an Admin overriding a shift with an open replacement request
+  leaves a stale `Pending` row in the queue pointing at a shift that's
+  already been reassigned. Don't remove this call if you touch
+  `AssignShiftAsync` again.
+- **`ShiftDto` carries `PendingReplacementRequestId`/
+  `PendingReplacementRequestedByUserId` so `GetShiftsAsync` alone gives the
+  calendar page everything it needs** (no second fetch to know who to show
+  a "Cancel" button to) — safe because the service enforces at most one
+  active `Pending` request per shift (creating a new one requires
+  `Status == Assigned`, which flips to `ReplacementRequested` immediately).
+
 ## Data model
 
 See `../CLAUDE_CARE.md` for the full spec (data model, phased build plan,
@@ -237,6 +272,8 @@ full version history) and `IDocumentStorageService`/`LocalDocumentStorageService
 gatekeeper's base64-JSON-payload `LocalFileStorageService` — different enough
 upload shape that a purpose-built service was simpler than adapting it).
 Phase 3 added `IShiftService`/`ShiftsController` (rolling 4-week shift
-generation via `ShiftGenerationJob`, admin direct-assign) — self-assign,
-replacement requests, and shift notes (`ReplacementRequest`, `ShiftNote`
-entities already scaffolded but unused) are still Phase 4/5.
+generation via `ShiftGenerationJob`, admin direct-assign). Phase 4 added
+self-claim of open shifts and a full replacement-request flow (create,
+cancel, claim, queue) via `ReplacementRequestsController` plus additions to
+`IShiftService`/`ShiftsController` — shift notes (`ShiftNote` entity already
+scaffolded but unused) is still Phase 5.

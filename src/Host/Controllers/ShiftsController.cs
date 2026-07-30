@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Care.WebApi.Application.Care;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -27,4 +28,22 @@ public class ShiftsController : ControllerBase
         await _shiftService.AssignShiftAsync(id, request.UserId, cancellationToken);
         return Ok();
     }
+
+    [HttpPost("{id}/claim")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<IActionResult> ClaimAsync(Guid id, CancellationToken cancellationToken)
+    {
+        await _shiftService.ClaimShiftAsync(id, RequestingUserId, cancellationToken);
+        return Ok();
+    }
+
+    [HttpPost("{id}/replacement-requests")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<IActionResult> CreateReplacementRequestAsync(Guid id, CreateReplacementRequestRequest request, CancellationToken cancellationToken)
+    {
+        await _shiftService.CreateReplacementRequestAsync(id, RequestingUserId, request.Reason, cancellationToken);
+        return Ok();
+    }
+
+    private string RequestingUserId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 }
