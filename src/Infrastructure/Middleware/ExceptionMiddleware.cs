@@ -28,6 +28,8 @@ public class ExceptionMiddleware
             {
                 UnauthorizedException => HttpStatusCode.Unauthorized,
                 ForbiddenException => HttpStatusCode.Forbidden,
+                NotFoundException => HttpStatusCode.NotFound,
+                ConflictException => HttpStatusCode.Conflict,
                 _ => HttpStatusCode.InternalServerError
             };
 

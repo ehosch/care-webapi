@@ -11,8 +11,8 @@ frontend: `../care-wasm/`.
 ```
 src/
 ├── Core/Domain/          # Entities: Invite, Document, ShiftTemplate, Shift, ReplacementRequest, ShiftNote
-├── Core/Application/     # MediatR/FluentValidation scaffolding (mostly empty — Phase 1+ fills this in)
-├── Infrastructure/       # EF Core (MySQL/Pomelo), ASP.NET Identity, JWT auth, Hangfire, Serilog, NSwag
+├── Core/Application/     # Interfaces (ITokenService, IUserService, IMailService) + DTOs — see note below
+├── Infrastructure/       # EF Core (MySQL/Pomelo), ASP.NET Identity, JWT auth, Hangfire, Mailing, Serilog, NSwag
 ├── Host/                 # ASP.NET Core entry point, controllers, Configurations/
 └── Migrators/Migrators.MySQL/  # EF Core migrations project
 ```
@@ -24,6 +24,23 @@ active/expiry gate (unlike gatekeeper's `TokenService.GetTokenAsync`).
 **Roles**: plain ASP.NET Identity `IdentityRole` (`Admin`, `Member`), seeded at
 startup by `ApplicationDbInitializer` — no granular permission-claim catalog like
 gatekeeper's `FSHPermissions` (not needed with only 2 roles).
+
+**No MediatR for Identity features.** `TokenService`/`UserService` implement
+Application-layer interfaces (`ITokenService`/`IUserService`) directly against
+`UserManager<ApplicationUser>`, and `TokensController`/`UsersController` call
+them straight — no MediatR commands. Wrapping this in MediatR would force
+Application-layer handlers to depend on Infrastructure-only types
+(`ApplicationUser`, `UserManager`, `ApplicationDbContext`), breaking the layer
+boundary for no benefit at this scale. Request DTOs use DataAnnotations
+(`[Required]`, `[EmailAddress]`, `[MinLength]`) — `[ApiController]` validates
+them automatically, no FluentValidation/pipeline-behavior wiring needed.
+**On a positional record, DataAnnotations attributes must NOT use the
+`[property: ...]` target** (e.g. `[Required] string Email`, not
+`[property: Required] string Email`) — with the property-only target, ASP.NET
+Core's model binder throws `"...validation metadata defined on property
+'Email' that will be ignored... must be associated with the constructor
+parameter"` at request time. Found this via a live 500 while testing the
+invite endpoint.
 
 ## Common commands
 
@@ -115,10 +132,47 @@ the compose file.
   `dotnet ef migrations add` fails with "File ...Migrators.MySQL.dll not
   found." Matches gatekeeper's own `Host.csproj` reference list.
 
+## Known gotchas from Phase 1 (Auth & Users)
+
+- **`AddIdentity()` + JWT bearer auth: the single-string
+  `AddAuthentication(JwtBearerDefaults.AuthenticationScheme)` overload only
+  sets `DefaultScheme`, not `DefaultChallengeScheme`.** `AddIdentity()` (called
+  first, per `Infrastructure/Auth/Startup.cs`'s "must add identity before
+  auth" ordering) registers its own cookie scheme and explicitly sets
+  `DefaultChallengeScheme` to it. Since that's a different property than the
+  one the string overload sets, Identity's cookie scheme wins — every
+  `[Authorize]` challenge redirected to a nonexistent `/Account/Login`
+  (a `302`) instead of returning `401`, discovered when the first real
+  protected endpoint (`POST /api/users/invite`) was tested. Fixed in
+  `Infrastructure/Auth/Jwt/Startup.cs` by using the lambda overload and
+  setting both `DefaultAuthenticateScheme` and `DefaultChallengeScheme`
+  explicitly — matching gatekeeper's own `AddJwtAuth`, which already does
+  this (don't regress to the simpler string overload).
+- **A controller action returning bare `Ok()`/`IActionResult` with no
+  `[ProducesResponseType]` produces an OpenAPI schema of
+  `application/octet-stream`**, so NSwag generates a `Task<FileResponse>`
+  client method instead of `Task`. Every no-body action in
+  `UsersController` has `[ProducesResponseType(StatusCodes.Status200OK)]`
+  specifically to keep the generated care-wasm client methods as plain
+  `Task` — add the same attribute to any new bare-`Ok()` action.
+- **Invite/password-reset links are logged at `Information` level**
+  (`UserService.CreateAndSendInviteAsync`/`ForgotPasswordAsync`) in addition
+  to being emailed via a Hangfire-enqueued `IMailService.SendAsync`. This is
+  deliberate, not leftover debug logging — a self-hoster without SMTP
+  configured yet shouldn't be locked out of onboarding. Don't remove it.
+- **`care-wasm`'s `JwtAuthenticationHeaderHandler` needs every new
+  `[AllowAnonymous]` route added to its own allowlist** — see that repo's
+  `CLAUDE.md`. Forgetting this makes a logged-out user get redirected to
+  `/login` instead of reaching the anonymous page, even though the API
+  itself is configured correctly.
+
 ## Data model
 
 See `../CLAUDE_CARE.md` for the full spec (data model, phased build plan,
-notification triggers). Phase 0 (this scaffold) only covers entities +
-auth/Hangfire/Docker wiring — no business logic (CQRS handlers, controllers
-beyond `TokensController`) exists yet. `ShiftGenerationJob` is a logging stub;
-real `ShiftTemplate → Shift` rollover logic is Phase 3.
+notification triggers). Phase 1 added `IUserService`/`UsersController`
+(invites, registration, roles, forgot/reset password) and
+`IMailService`/`SmtpMailService` (plain HTML templates in
+`Infrastructure/Mailing/EmailTemplates.cs`, enqueued via Hangfire). No schema
+changes were needed — `ApplicationUser`/`Invite` already had every column
+Phase 1 uses. `ShiftGenerationJob` is still a logging stub; real
+`ShiftTemplate → Shift` rollover logic is Phase 3.

@@ -5,6 +5,10 @@
       "Key": "YOUR_JWT_SECRET_KEY_MIN_32_CHARS",
       "TokenExpirationInMinutes": 10080,
       "RefreshTokenExpirationInDays": 30
+    },
+    "DefaultAdmin": {
+      "Email": "admin@example.com",
+      "Password": "ChangeMe123!"
     }
   }
 }

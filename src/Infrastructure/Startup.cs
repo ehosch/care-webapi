@@ -5,6 +5,7 @@ using Care.WebApi.Infrastructure.Auth;
 using Care.WebApi.Infrastructure.BackgroundJobs;
 using Care.WebApi.Infrastructure.Cors;
 using Care.WebApi.Infrastructure.Identity;
+using Care.WebApi.Infrastructure.Mailing;
 using Care.WebApi.Infrastructure.Middleware;
 using Care.WebApi.Infrastructure.OpenApi;
 using Care.WebApi.Infrastructure.Persistence;
@@ -34,6 +35,7 @@ public static class Startup
             .AddAuth(config)
             .AddBackgroundJobs(config)
             .AddCorsPolicy(config)
+            .AddMailing(config)
             .AddExceptionMiddleware()
             .AddHealthChecks().Services
             .AddOpenApiDocumentation()

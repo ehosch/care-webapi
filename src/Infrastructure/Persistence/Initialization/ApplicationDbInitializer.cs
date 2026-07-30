@@ -1,6 +1,8 @@
+using Care.WebApi.Infrastructure.Identity;
 using Care.WebApi.Infrastructure.Persistence.Context;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -27,6 +29,36 @@ public static class ApplicationDbInitializer
             {
                 await roleManager.CreateAsync(new IdentityRole(roleName));
                 logger.LogInformation("Seeded role {RoleName}.", roleName);
+            }
+        }
+
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        if (!await userManager.Users.AnyAsync(cancellationToken))
+        {
+            var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
+            string email = config["SecuritySettings:DefaultAdmin:Email"] ?? "admin@example.com";
+            string password = config["SecuritySettings:DefaultAdmin:Password"] ?? "ChangeMe123!";
+
+            var admin = new ApplicationUser
+            {
+                UserName = email,
+                Email = email,
+                Name = "Admin",
+                Status = UserStatus.Active,
+                EmailConfirmed = true,
+                InvitedAt = DateTime.UtcNow,
+                JoinedAt = DateTime.UtcNow
+            };
+
+            var result = await userManager.CreateAsync(admin, password);
+            if (result.Succeeded)
+            {
+                await userManager.AddToRoleAsync(admin, "Admin");
+                logger.LogInformation("Seeded default admin user {Email} — log in and change the password immediately.", email);
+            }
+            else
+            {
+                logger.LogError("Failed to seed default admin user: {Errors}", string.Join(", ", result.Errors.Select(e => e.Description)));
             }
         }
     }

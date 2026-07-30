@@ -1,4 +1,5 @@
 using Care.WebApi.Application.Identity.Tokens;
+using Care.WebApi.Application.Identity.Users;
 using Care.WebApi.Infrastructure.Persistence.Context;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
@@ -23,6 +24,7 @@ internal static class Startup
             .AddDefaultTokenProviders();
 
         services.AddScoped<ITokenService, TokenService>();
+        services.AddScoped<IUserService, UserService>();
 
         return services;
     }
