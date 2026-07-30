@@ -1,0 +1,5 @@
+{
+  "DatabaseSettings": {
+    "ConnectionString": "server=localhost;port=3307;uid=root;pwd=YOUR_DB_PASSWORD;database=careDb;Allow User Variables=True"
+  }
+}

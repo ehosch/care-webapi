@@ -1,0 +1,6 @@
+@Care.WebApi.Host_HostAddress = http://localhost:5209
+
+GET {{Care.WebApi.Host_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

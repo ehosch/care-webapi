@@ -1,0 +1,7 @@
+{
+  "SmsSettings": {
+    "AccountSid": "YOUR_TWILIO_ACCOUNT_SID",
+    "AuthToken": "YOUR_TWILIO_AUTH_TOKEN",
+    "FromNumber": "+15555550100"
+  }
+}

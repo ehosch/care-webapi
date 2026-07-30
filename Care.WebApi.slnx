@@ -1,0 +1,20 @@
+<Solution>
+  <Folder Name="/src/" />
+  <Folder Name="/src/Core/" />
+  <Folder Name="/src/Core/Application/">
+    <Project Path="src/Core/Application/Care.WebApi.Application.csproj" />
+  </Folder>
+  <Folder Name="/src/Core/Domain/">
+    <Project Path="src/Core/Domain/Care.WebApi.Domain.csproj" />
+  </Folder>
+  <Folder Name="/src/Host/">
+    <Project Path="src/Host/Care.WebApi.Host.csproj" />
+  </Folder>
+  <Folder Name="/src/Infrastructure/">
+    <Project Path="src/Infrastructure/Care.WebApi.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/src/Migrators/" />
+  <Folder Name="/src/Migrators/Migrators.MySQL/">
+    <Project Path="src/Migrators/Migrators.MySQL/Care.WebApi.Migrators.MySQL.csproj" />
+  </Folder>
+</Solution>

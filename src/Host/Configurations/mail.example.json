@@ -1,0 +1,10 @@
+{
+  "MailSettings": {
+    "DisplayName": "Care Coordination",
+    "From": "your-email@yourdomain.com",
+    "Host": "smtp.mailgun.org",
+    "Port": 587,
+    "UserName": "your-email@yourdomain.com",
+    "Password": "YOUR_MAILGUN_API_KEY"
+  }
+}

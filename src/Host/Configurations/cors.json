@@ -1,0 +1,5 @@
+{
+  "CorsSettings": {
+    "Blazor": "https://localhost:7101;http://localhost:5101"
+  }
+}
