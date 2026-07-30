@@ -11,11 +11,11 @@ WebAssembly frontend lives in the companion
 
 ## Status
 
-Phase 0 (scaffold) and Phase 1 (Auth & Users) are done — invites, registration,
-login, roles, and forgot/reset password all work end-to-end. The shift
-calendar, documents, notes, and SMS/email *notifications* (as opposed to the
-account-related emails Phase 1 already sends) are not yet implemented. See
-[Roadmap](#roadmap).
+Phase 0 (scaffold), Phase 1 (Auth & Users), and Phase 2 (Documents) are done —
+invites, registration, login, roles, forgot/reset password, and a document
+library with full version history all work end-to-end. The shift calendar,
+notes, and SMS/email *notifications* (as opposed to the account-related
+emails Phase 1 already sends) are not yet implemented. See [Roadmap](#roadmap).
 
 ## First login
 
@@ -31,6 +31,16 @@ with a link to `/register?token=...` to set their name and password. **If you
 haven't configured a working mail provider yet, the invite/reset link is also
 logged at `Information` level** — `docker logs care-webapi` (or the console,
 for `dotnet run`) — so onboarding isn't blocked on getting SMTP right first.
+
+## Documents
+
+Admins upload documents (title, category, any file type up to 50 MB); every
+active user can list and download them. Replacing a document keeps the
+outgoing file as a downloadable version in history rather than discarding it
+— see `GET /api/documents/{id}/versions`. Files are stored on local disk
+under a Docker named volume (`care-documents`), not in the database — back
+that volume up alongside your MySQL data if you care about the uploaded
+files, not just the metadata.
 
 ## Tech stack
 
@@ -150,10 +160,10 @@ initialization race, not a misconfiguration.
 
 ## Roadmap
 
-The shift calendar, self-assign/replacement requests, shift notes, document
-library, and email/SMS *notifications* (shift assigned, replacement claimed,
-etc. — distinct from the account emails Phase 1 already sends) are planned
-but not yet built. See `CLAUDE.md` for current architecture notes.
+The shift calendar, self-assign/replacement requests, shift notes, and
+email/SMS *notifications* (shift assigned, replacement claimed, etc. —
+distinct from the account emails Phase 1 already sends) are planned but not
+yet built. See `CLAUDE.md` for current architecture notes.
 
 ## License
 

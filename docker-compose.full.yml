@@ -55,8 +55,11 @@ services:
       - SmsSettings__AuthToken=${TWILIO_AUTH_TOKEN}
       - SmsSettings__FromNumber=${TWILIO_FROM_NUMBER}
       - CorsSettings__Blazor=${WASM_URL:?set WASM_URL in .env, e.g. https://care.yourdomain.example}
+      - DocumentStorageSettings__StoragePath=/app/documents
     ports:
       - "${API_PORT:-5010}:8080"
+    volumes:
+      - care-documents:/app/documents
     restart: on-failure
 
   wasm:
@@ -74,3 +77,4 @@ services:
 
 volumes:
   care-mysql-data:
+  care-documents:

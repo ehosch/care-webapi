@@ -465,3 +465,5 @@ src/Host/Configurations/sms.json
 .env
 .env.full
 .env.debug
+# Local document storage (dotnet run default) — Docker uses a named volume instead
+src/Host/App_Data/

@@ -29,8 +29,11 @@ services:
       - SmsSettings__AuthToken=${TWILIO_AUTH_TOKEN}
       - SmsSettings__FromNumber=${TWILIO_FROM_NUMBER}
       - CorsSettings__Blazor=${CORS_BLAZOR}
+      - DocumentStorageSettings__StoragePath=/app/documents
     ports:
       - "5010:8080"
+    volumes:
+      - care-documents:/app/documents
     networks:
       - care-mysql_default
     restart: on-failure
@@ -38,3 +41,6 @@ services:
 networks:
   care-mysql_default:
     external: true
+
+volumes:
+  care-documents:

@@ -11,7 +11,7 @@ frontend: `../care-wasm/`.
 ```
 src/
 ├── Core/Domain/          # Entities: Invite, Document, ShiftTemplate, Shift, ReplacementRequest, ShiftNote
-├── Core/Application/     # Interfaces (ITokenService, IUserService, IMailService) + DTOs — see note below
+├── Core/Application/     # Interfaces (ITokenService, IUserService, IMailService, IDocumentService, IDocumentStorageService) + DTOs — see note below
 ├── Infrastructure/       # EF Core (MySQL/Pomelo), ASP.NET Identity, JWT auth, Hangfire, Mailing, Serilog, NSwag
 ├── Host/                 # ASP.NET Core entry point, controllers, Configurations/
 └── Migrators/Migrators.MySQL/  # EF Core migrations project
@@ -83,6 +83,11 @@ docker compose up -d --build
 |---|---|---|
 | `care-mysql` | 3307 → 3306 | `care-mysql_default` |
 | `care-webapi` | 5010 → 8080 | joins `care-mysql_default` |
+
+Uploaded documents live on disk under the `care-documents` named volume
+(`/app/documents` inside the container, `DocumentStorageSettings__StoragePath`)
+— not in MySQL. Back it up alongside the database if the actual files matter,
+not just their metadata.
 
 There's also `docker-compose.full.yml` + `.env.full.example` — a standalone
 quickstart that pulls both the `care-webapi` and `care-wasm` published images
@@ -166,13 +171,42 @@ the compose file.
   `/login` instead of reaching the anonymous page, even though the API
   itself is configured correctly.
 
+## Known gotchas from Phase 2 (Documents)
+
+- **`Document` is the current version; `DocumentVersion` archives what it
+  looked like *before* a replace** — not the other way around. On replace,
+  the new upload gets a brand-new storage key (no file copying), a
+  `DocumentVersion` row is written with the *outgoing* file's fields (which
+  stays on disk, now only referenced from the archive row), then `Document`
+  itself is overwritten in place and `Version` incremented. `DeleteAsync`
+  removes the DB rows first (cascade handles `DocumentVersion`s), then
+  best-effort deletes every physical file (current + archived) — matches
+  `SmtpMailService`'s "log failures, don't throw" resilience style.
+- **The storage key is always a fresh `Guid`, never the original filename or
+  any user input.** `LocalDocumentStorageService` still runs
+  `Path.GetFileName()` on the key before touching disk as defense-in-depth,
+  but the real protection against path traversal is that user input never
+  reaches the filesystem path at all — `Document.FileName`/`ContentType` are
+  metadata only, used solely for the `Content-Disposition`/`Content-Type`
+  response headers on download.
+- **Download actions are the *correct*, wanted case of NSwag's
+  `Task<FileResponse>` generation** — unlike `UsersController`'s bare-`Ok()`
+  actions (Phase 1 gotcha above), `DocumentsController`'s download endpoints
+  really do return a binary stream, so no `[ProducesResponseType]` override
+  is needed there. `Replace`/`Delete` still need it, same as Phase 1, since
+  they return bare `Ok()`.
+
 ## Data model
 
 See `../CLAUDE_CARE.md` for the full spec (data model, phased build plan,
 notification triggers). Phase 1 added `IUserService`/`UsersController`
 (invites, registration, roles, forgot/reset password) and
 `IMailService`/`SmtpMailService` (plain HTML templates in
-`Infrastructure/Mailing/EmailTemplates.cs`, enqueued via Hangfire). No schema
-changes were needed — `ApplicationUser`/`Invite` already had every column
-Phase 1 uses. `ShiftGenerationJob` is still a logging stub; real
-`ShiftTemplate → Shift` rollover logic is Phase 3.
+`Infrastructure/Mailing/EmailTemplates.cs`, enqueued via Hangfire). Phase 2
+added `IDocumentService`/`DocumentsController` (upload/replace/delete with
+full version history) and `IDocumentStorageService`/`LocalDocumentStorageService`
+(local-disk storage, one file per storage key, no shared code with
+gatekeeper's base64-JSON-payload `LocalFileStorageService` — different enough
+upload shape that a purpose-built service was simpler than adapting it).
+`ShiftGenerationJob` is still a logging stub; real `ShiftTemplate → Shift`
+rollover logic is Phase 3.
