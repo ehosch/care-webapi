@@ -3,6 +3,7 @@ using Asp.Versioning;
 using Care.WebApi.Application;
 using Care.WebApi.Infrastructure.Auth;
 using Care.WebApi.Infrastructure.BackgroundJobs;
+using Care.WebApi.Infrastructure.Care;
 using Care.WebApi.Infrastructure.Cors;
 using Care.WebApi.Infrastructure.Documents;
 using Care.WebApi.Infrastructure.FileStorage;
@@ -40,6 +41,7 @@ public static class Startup
             .AddMailing(config)
             .AddDocumentStorage(config)
             .AddDocumentServices()
+            .AddShiftServices()
             .AddExceptionMiddleware()
             .AddHealthChecks().Services
             .AddOpenApiDocumentation()
@@ -70,6 +72,7 @@ public static class Startup
             .UseAuthentication()
             .UseAuthorization()
             .UseHangfireDashboardWithAuth(config)
+            .UseShiftGenerationJob()
             .UseOpenApiDocumentation();
 
     public static IEndpointRouteBuilder MapEndpoints(this IEndpointRouteBuilder builder)

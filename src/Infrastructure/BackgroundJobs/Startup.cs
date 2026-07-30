@@ -39,4 +39,12 @@ internal static class Startup
 
         return app.UseHangfireDashboard(config["HangfireSettings:Route"], dashboardOptions);
     }
+
+    internal static IApplicationBuilder UseShiftGenerationJob(this IApplicationBuilder app)
+    {
+        RecurringJob.AddOrUpdate<ShiftGenerationJob>("shift-generation", job => job.RunAsync(), Cron.Daily());
+        BackgroundJob.Enqueue<ShiftGenerationJob>(job => job.RunAsync());
+
+        return app;
+    }
 }

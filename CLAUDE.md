@@ -11,7 +11,7 @@ frontend: `../care-wasm/`.
 ```
 src/
 ├── Core/Domain/          # Entities: Invite, Document, ShiftTemplate, Shift, ReplacementRequest, ShiftNote
-├── Core/Application/     # Interfaces (ITokenService, IUserService, IMailService, IDocumentService, IDocumentStorageService) + DTOs — see note below
+├── Core/Application/     # Interfaces (ITokenService, IUserService, IMailService, IDocumentService, IDocumentStorageService, IShiftService) + DTOs — see note below
 ├── Infrastructure/       # EF Core (MySQL/Pomelo), ASP.NET Identity, JWT auth, Hangfire, Mailing, Serilog, NSwag
 ├── Host/                 # ASP.NET Core entry point, controllers, Configurations/
 └── Migrators/Migrators.MySQL/  # EF Core migrations project
@@ -196,6 +196,34 @@ the compose file.
   is needed there. `Replace`/`Delete` still need it, same as Phase 1, since
   they return bare `Ok()`.
 
+## Known gotchas from Phase 3 (Care Calendar Core)
+
+- **`ShiftTemplate`/`Shift`/`ShiftType`/`ShiftStatus` entities, their EF
+  configs, and DbSets all existed since the Phase 0 scaffold** — only the
+  service/controller/UI and the actual generation logic were missing. Don't
+  assume a domain type without a controller is unimplemented at the model
+  layer too; check `Core/Domain` first.
+- **`ShiftGenerationJob` needs both a daily `RecurringJob.AddOrUpdate` *and*
+  an immediate one-off `BackgroundJob.Enqueue`** on every app start
+  (`Infrastructure/BackgroundJobs/Startup.cs`'s `UseShiftGenerationJob`).
+  Hangfire recurring jobs only fire on the next cron tick, not at
+  registration time — without the immediate enqueue, a fresh deployment's
+  calendar would stay empty until the next midnight UTC.
+- **`Shift(Date, ShiftType)` has a unique composite index** (added in the
+  `AddShiftUniqueIndex` migration) as insurance against the generation job
+  ever double-inserting a shift for the same slot — cheap to add, expensive
+  to debug a duplicate-shift bug without it.
+- **This is the first feature where `DateOnly` crosses the API boundary**
+  (the `weekStart` query parameter and `ShiftDto.Date`). NSwag's configured
+  `dateType: System.DateTimeOffset` (`ApiClient/nswag.json`) means the
+  generated care-wasm client uses `DateTimeOffset`, not `DateOnly` — care-wasm
+  code converts with `DateOnly.FromDateTime(dto.Date.Date)` when comparing
+  against grid cells.
+- **Shift-block times are fixed defaults seeded once at startup**
+  (`ApplicationDbInitializer`), not admin-editable yet — matches the spec's
+  own "adjustable, admin-configurable later" framing for `ShiftTemplate`.
+  Don't add template CRUD without checking this is still the desired scope.
+
 ## Data model
 
 See `../CLAUDE_CARE.md` for the full spec (data model, phased build plan,
@@ -208,5 +236,7 @@ full version history) and `IDocumentStorageService`/`LocalDocumentStorageService
 (local-disk storage, one file per storage key, no shared code with
 gatekeeper's base64-JSON-payload `LocalFileStorageService` — different enough
 upload shape that a purpose-built service was simpler than adapting it).
-`ShiftGenerationJob` is still a logging stub; real `ShiftTemplate → Shift`
-rollover logic is Phase 3.
+Phase 3 added `IShiftService`/`ShiftsController` (rolling 4-week shift
+generation via `ShiftGenerationJob`, admin direct-assign) — self-assign,
+replacement requests, and shift notes (`ReplacementRequest`, `ShiftNote`
+entities already scaffolded but unused) are still Phase 4/5.

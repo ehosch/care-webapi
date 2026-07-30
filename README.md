@@ -11,11 +11,13 @@ WebAssembly frontend lives in the companion
 
 ## Status
 
-Phase 0 (scaffold), Phase 1 (Auth & Users), and Phase 2 (Documents) are done —
-invites, registration, login, roles, forgot/reset password, and a document
-library with full version history all work end-to-end. The shift calendar,
-notes, and SMS/email *notifications* (as opposed to the account-related
-emails Phase 1 already sends) are not yet implemented. See [Roadmap](#roadmap).
+Phase 0 (scaffold), Phase 1 (Auth & Users), Phase 2 (Documents), and Phase 3
+(Care Calendar Core) are done — invites, registration, login, roles,
+forgot/reset password, a document library with full version history, and a
+rolling 7-day×3-shift care calendar with admin direct-assign all work
+end-to-end. Self-assign/replacement requests, shift notes, and SMS/email
+*notifications* (as opposed to the account-related emails Phase 1 already
+sends) are not yet implemented. See [Roadmap](#roadmap).
 
 ## First login
 
@@ -41,6 +43,17 @@ outgoing file as a downloadable version in history rather than discarding it
 under a Docker named volume (`care-documents`), not in the database — back
 that volume up alongside your MySQL data if you care about the uploaded
 files, not just the metadata.
+
+## Care Calendar
+
+A rolling 4-weeks-out calendar of Day (7am-3pm), Evening (3pm-11pm), and
+Overnight (11pm-7am) shifts is generated automatically from a fixed set of
+weekly templates (seeded once on first boot — not yet admin-editable, see
+[Roadmap](#roadmap)) via a daily Hangfire job. Any active user can view the
+week grid (`GET /api/shifts?weekStart=`); only Admins can direct-assign or
+unassign a shift (`PUT /api/shifts/{id}/assign`). Self-assign/claim and
+replacement requests are planned for a later phase — for now, assignment is
+admin-only.
 
 ## Tech stack
 
@@ -160,10 +173,11 @@ initialization race, not a misconfiguration.
 
 ## Roadmap
 
-The shift calendar, self-assign/replacement requests, shift notes, and
-email/SMS *notifications* (shift assigned, replacement claimed, etc. —
-distinct from the account emails Phase 1 already sends) are planned but not
-yet built. See `CLAUDE.md` for current architecture notes.
+Self-assign/replacement requests, shift notes, admin-editable shift-block
+times (currently fixed defaults), and email/SMS *notifications* (shift
+assigned, replacement claimed, etc. — distinct from the account emails
+Phase 1 already sends) are planned but not yet built. See `CLAUDE.md` for
+current architecture notes.
 
 ## License
 

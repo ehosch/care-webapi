@@ -17,6 +17,7 @@ public class ShiftConfig : IEntityTypeConfiguration<Shift>
     {
         builder.Property(s => s.AssignedUserId).HasMaxLength(450);
         builder.HasIndex(s => s.Date);
+        builder.HasIndex(s => new { s.Date, s.ShiftType }).IsUnique();
     }
 }
 
