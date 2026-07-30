@@ -37,5 +37,6 @@ public class ShiftNoteConfig : IEntityTypeConfiguration<ShiftNote>
     {
         builder.Property(n => n.AuthorUserId).HasMaxLength(450).IsRequired();
         builder.Property(n => n.Text).HasMaxLength(4000).IsRequired();
+        builder.HasIndex(n => n.ShiftId);
     }
 }

@@ -11,14 +11,13 @@ WebAssembly frontend lives in the companion
 
 ## Status
 
-Phase 0 (scaffold), Phase 1 (Auth & Users), Phase 2 (Documents), Phase 3
-(Care Calendar Core), and Phase 4 (Self-Assign & Replacement Requests) are
-done — invites, registration, login, roles, forgot/reset password, a
-document library with full version history, a rolling 7-day×3-shift care
-calendar with admin direct-assign, self-claim of open shifts, and a
-replacement-request queue/claim flow all work end-to-end. Shift notes and
-SMS/email *notifications* (as opposed to the account-related emails Phase 1
-already sends) are not yet implemented. See [Roadmap](#roadmap).
+Phase 0 (scaffold) through Phase 5 (Shift Notes) are done — invites,
+registration, login, roles, forgot/reset password, a document library with
+full version history, a rolling 7-day×3-shift care calendar with admin
+direct-assign, self-claim of open shifts, a replacement-request
+queue/claim flow, and a per-shift note thread all work end-to-end. SMS/email
+*notifications* (as opposed to the account-related emails Phase 1 already
+sends) are not yet implemented. See [Roadmap](#roadmap).
 
 ## First login
 
@@ -64,6 +63,11 @@ reassigns the shift to them and releases you. You can also cancel your own
 still-open request (`DELETE /api/replacement-requests/{id}`) if you end up
 able to cover it after all. An Admin directly reassigning a shift
 automatically cancels any pending replacement request on it.
+
+Any active user can also add a note to any shift and read every note left
+on it (`GET`/`POST /api/shifts/{id}/notes`) — a simple append-only comment
+thread, not tied to who's assigned, useful for context like "Mom needs help
+with X today."
 
 ## Tech stack
 
@@ -183,10 +187,10 @@ initialization race, not a misconfiguration.
 
 ## Roadmap
 
-Shift notes, admin-editable shift-block times (currently fixed defaults),
-and email/SMS *notifications* (shift assigned, replacement claimed, etc. —
-distinct from the account emails Phase 1 already sends) are planned but not
-yet built. See `CLAUDE.md` for current architecture notes.
+Admin-editable shift-block times (currently fixed defaults) and email/SMS
+*notifications* (shift assigned, replacement claimed, etc. — distinct from
+the account emails Phase 1 already sends) are planned but not yet built.
+See `CLAUDE.md` for current architecture notes.
 
 ## License
 

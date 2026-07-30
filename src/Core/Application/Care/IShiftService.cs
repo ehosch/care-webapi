@@ -15,4 +15,8 @@ public interface IShiftService
     Task ClaimReplacementRequestAsync(Guid requestId, string claimingUserId, CancellationToken cancellationToken);
 
     Task<List<ReplacementRequestDto>> GetReplacementQueueAsync(CancellationToken cancellationToken);
+
+    Task<List<ShiftNoteDto>> GetShiftNotesAsync(Guid shiftId, CancellationToken cancellationToken);
+
+    Task<ShiftNoteDto> AddShiftNoteAsync(Guid shiftId, string authorUserId, string text, CancellationToken cancellationToken);
 }

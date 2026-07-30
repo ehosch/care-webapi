@@ -11,7 +11,7 @@ frontend: `../care-wasm/`.
 ```
 src/
 ├── Core/Domain/          # Entities: Invite, Document, ShiftTemplate, Shift, ReplacementRequest, ShiftNote
-├── Core/Application/     # Interfaces (ITokenService, IUserService, IMailService, IDocumentService, IDocumentStorageService, IShiftService — shifts + replacement requests) + DTOs — see note below
+├── Core/Application/     # Interfaces (ITokenService, IUserService, IMailService, IDocumentService, IDocumentStorageService, IShiftService — shifts + replacement requests + notes) + DTOs — see note below
 ├── Infrastructure/       # EF Core (MySQL/Pomelo), ASP.NET Identity, JWT auth, Hangfire, Mailing, Serilog, NSwag
 ├── Host/                 # ASP.NET Core entry point, controllers, Configurations/
 └── Migrators/Migrators.MySQL/  # EF Core migrations project
@@ -259,6 +259,27 @@ the compose file.
   active `Pending` request per shift (creating a new one requires
   `Status == Assigned`, which flips to `ReplacementRequested` immediately).
 
+## Known gotchas from Phase 5 (Shift Notes)
+
+- **`ShiftNote` existed since Phase 0 with only a no-op `ShiftNoteConfig`**
+  (property constraints, no index) — same pattern every prior phase found;
+  check `Core/Domain` before assuming a spec feature needs a new entity.
+- **`AddShiftNoteAsync` returns the created `ShiftNoteDto`, not bare
+  `Ok()`** — deliberately, so care-wasm's notes dialog can append the new
+  note to the thread instantly instead of a full reload. Because it returns
+  actual JSON data (not void), no `[ProducesResponseType]` override is
+  needed on `AddNoteAsync` — that gotcha only applies to bare-`Ok()`
+  actions, same reasoning as `DocumentsController`'s `UploadAsync`.
+- **This is a deliberately append-only feature** — no edit/delete
+  endpoints exist, matching the spec's literal "add a note"/"read it"
+  wording. Don't add them without checking this is still the intended
+  scope; nothing about `ShiftNote` (no `Status` field, unlike
+  `ReplacementRequest`'s scaffolded `Cancelled` value) hints at more.
+- **`ShiftDto.NoteCount` is computed via a `GroupBy` count query in
+  `GetShiftsAsync`, not a stored column** — keeps the calendar's per-cell
+  badge in sync automatically; don't try to cache/store it on `Shift`
+  itself, it would just go stale.
+
 ## Data model
 
 See `../CLAUDE_CARE.md` for the full spec (data model, phased build plan,
@@ -275,5 +296,7 @@ Phase 3 added `IShiftService`/`ShiftsController` (rolling 4-week shift
 generation via `ShiftGenerationJob`, admin direct-assign). Phase 4 added
 self-claim of open shifts and a full replacement-request flow (create,
 cancel, claim, queue) via `ReplacementRequestsController` plus additions to
-`IShiftService`/`ShiftsController` — shift notes (`ShiftNote` entity already
-scaffolded but unused) is still Phase 5.
+`IShiftService`/`ShiftsController`. Phase 5 added a per-shift append-only
+note thread (`GetShiftNotesAsync`/`AddShiftNoteAsync`) — every planned
+domain entity from the original spec now has real logic behind it; only
+email/SMS notification dispatch remains unimplemented business logic.

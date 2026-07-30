@@ -12,4 +12,5 @@ public record ShiftDto(
     string? AssignedUserName,
     ShiftStatus Status,
     Guid? PendingReplacementRequestId,
-    string? PendingReplacementRequestedByUserId);
+    string? PendingReplacementRequestedByUserId,
+    int NoteCount);

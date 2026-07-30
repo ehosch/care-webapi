@@ -35,6 +35,12 @@ internal class ShiftService : IShiftService
             .ToListAsync(cancellationToken);
         var pendingByShiftId = pendingRequests.ToDictionary(r => r.ShiftId);
 
+        var noteCounts = await _db.ShiftNotes
+            .Where(n => shiftIds.Contains(n.ShiftId))
+            .GroupBy(n => n.ShiftId)
+            .Select(g => new { ShiftId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.ShiftId, x => x.Count, cancellationToken);
+
         var names = await ResolveNamesAsync(shifts
             .Where(s => s.AssignedUserId != null)
             .Select(s => s.AssignedUserId!));
@@ -53,7 +59,8 @@ internal class ShiftService : IShiftService
                     s.AssignedUserId is null ? null : names.GetValueOrDefault(s.AssignedUserId, "Unknown"),
                     s.Status,
                     pending?.Id,
-                    pending?.RequestedByUserId);
+                    pending?.RequestedByUserId,
+                    noteCounts.GetValueOrDefault(s.Id));
             })
             .ToList();
     }
@@ -216,6 +223,46 @@ internal class ShiftService : IShiftService
                     r.CreatedOn);
             })
             .ToList();
+    }
+
+    public async Task<List<ShiftNoteDto>> GetShiftNotesAsync(Guid shiftId, CancellationToken cancellationToken)
+    {
+        var notes = await _db.ShiftNotes
+            .Where(n => n.ShiftId == shiftId)
+            .OrderBy(n => n.CreatedOn)
+            .ToListAsync(cancellationToken);
+
+        var names = await ResolveNamesAsync(notes.Select(n => n.AuthorUserId));
+
+        return notes
+            .Select(n => new ShiftNoteDto(
+                n.Id,
+                n.AuthorUserId,
+                names.GetValueOrDefault(n.AuthorUserId, "Unknown"),
+                n.Text,
+                n.CreatedOn))
+            .ToList();
+    }
+
+    public async Task<ShiftNoteDto> AddShiftNoteAsync(Guid shiftId, string authorUserId, string text, CancellationToken cancellationToken)
+    {
+        if (await _db.Shifts.FindAsync([shiftId], cancellationToken) is null)
+        {
+            throw new NotFoundException("Shift not found.");
+        }
+
+        var note = new ShiftNote
+        {
+            ShiftId = shiftId,
+            AuthorUserId = authorUserId,
+            Text = text
+        };
+
+        _db.ShiftNotes.Add(note);
+        await _db.SaveChangesAsync(cancellationToken);
+
+        var names = await ResolveNamesAsync([authorUserId]);
+        return new ShiftNoteDto(note.Id, authorUserId, names.GetValueOrDefault(authorUserId, "Unknown"), text, note.CreatedOn);
     }
 
     private async Task CancelPendingRequestForShiftAsync(Guid shiftId, CancellationToken cancellationToken)

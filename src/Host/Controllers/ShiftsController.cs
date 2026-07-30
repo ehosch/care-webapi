@@ -45,5 +45,13 @@ public class ShiftsController : ControllerBase
         return Ok();
     }
 
+    [HttpGet("{id}/notes")]
+    public async Task<ActionResult<List<ShiftNoteDto>>> GetNotesAsync(Guid id, CancellationToken cancellationToken) =>
+        await _shiftService.GetShiftNotesAsync(id, cancellationToken);
+
+    [HttpPost("{id}/notes")]
+    public async Task<ActionResult<ShiftNoteDto>> AddNoteAsync(Guid id, AddShiftNoteRequest request, CancellationToken cancellationToken) =>
+        await _shiftService.AddShiftNoteAsync(id, RequestingUserId, request.Text, cancellationToken);
+
     private string RequestingUserId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 }
