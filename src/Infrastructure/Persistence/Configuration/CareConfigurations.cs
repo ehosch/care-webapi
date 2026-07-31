@@ -4,20 +4,12 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace Care.WebApi.Infrastructure.Persistence.Configuration;
 
-public class ShiftTemplateConfig : IEntityTypeConfiguration<ShiftTemplate>
-{
-    public void Configure(EntityTypeBuilder<ShiftTemplate> builder)
-    {
-    }
-}
-
 public class ShiftConfig : IEntityTypeConfiguration<Shift>
 {
     public void Configure(EntityTypeBuilder<Shift> builder)
     {
-        builder.Property(s => s.AssignedUserId).HasMaxLength(450);
+        builder.Property(s => s.AssignedUserId).HasMaxLength(450).IsRequired();
         builder.HasIndex(s => s.Date);
-        builder.HasIndex(s => new { s.Date, s.ShiftType }).IsUnique();
     }
 }
 

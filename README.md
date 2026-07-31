@@ -13,11 +13,13 @@ WebAssembly frontend lives in the companion
 
 All phases in the original build plan are done — invites, registration,
 login, roles, forgot/reset password, a document library with full version
-history, a rolling 7-day×3-shift care calendar with admin direct-assign,
-self-claim of open shifts, a replacement-request queue/claim flow, a
-per-shift note thread, and email/SMS notifications for shift-assigned,
-replacement-requested, replacement-claimed, and document-uploaded events
-all work end-to-end. See [Roadmap](#roadmap).
+history, a blockless care calendar (no fixed shift types — any contiguous
+stretch of a day can be claimed or assigned as its own shift) with
+self-claim, admin assign/reassign/delete, a replacement-request
+queue/claim flow, a per-shift note thread, and email/SMS notifications for
+shift-assigned, replacement-requested, replacement-claimed, shift-removed,
+shift-time-changed, and document-uploaded events all work end-to-end. See
+[Roadmap](#roadmap).
 
 ## First login
 
@@ -48,14 +50,26 @@ files, not just the metadata.
 
 ## Care Calendar
 
-A rolling 4-weeks-out calendar of Day (7am-3pm), Evening (3pm-11pm), and
-Overnight (11pm-7am) shifts is generated automatically from a fixed set of
-weekly templates (seeded once on first boot — not yet admin-editable, see
-[Roadmap](#roadmap)) via a daily Hangfire job. Any active user can view the
-week grid (`GET /api/shifts?weekStart=`) and claim any currently `Open`
-shift for themselves (`POST /api/shifts/{id}/claim`); Admins can also
-direct-assign or unassign any shift regardless of its current state
-(`PUT /api/shifts/{id}/assign`).
+There's no fixed shift schedule — a day is just 24 fillable hourly blocks.
+Nothing is a "shift" until someone claims or is assigned a contiguous run
+of them; uncovered time is simply the absence of a `Shift` row, not a row
+with some "open" status. Any active user can view the week grid
+(`GET /api/shifts?weekStart=`) and create a new shift over currently
+uncovered time for themselves (`POST /api/shifts`, defaults the assignee to
+you); Admins can create one for anyone, reassign an existing shift
+(`PUT /api/shifts/{id}/assign`), or delete one outright
+(`DELETE /api/shifts/{id}`, blocked if it has a pending replacement
+request).
+
+Any shift's Admin, or the member it's assigned to, can adjust its
+start/end time (`PUT /api/shifts/{id}/times`). Adjacent shifts always stay
+glued together when a boundary moves: growing into a neighboring shift
+shrinks it, or deletes it outright (with a notification to whoever was
+assigned) if your growth fully swallows it; shrinking your own shift lets
+an adjacent one reclaim the vacated time if one exists, or simply leaves it
+uncovered if nothing's there. There's no confirmation step for any of
+this — it always cascades, and the affected person is notified after the
+fact.
 
 If you're assigned to a shift you can no longer cover, request a
 replacement (`POST /api/shifts/{id}/replacement-requests`, optional reason)
@@ -70,18 +84,6 @@ Any active user can also add a note to any shift and read every note left
 on it (`GET`/`POST /api/shifts/{id}/notes`) — a simple append-only comment
 thread, not tied to who's assigned, useful for context like "Mom needs help
 with X today."
-
-An Admin, or the member currently assigned to a shift, can nudge that
-shift's start/end time away from its template default
-(`PUT /api/shifts/{id}/times`). If the adjustment would leave a gap next to
-an `Open` neighboring shift, that neighbor's boundary auto-adjusts to close
-it — nobody's assigned there yet, so nothing to warn about. If the
-neighbor is already assigned (or has a pending replacement request), the
-call is rejected with a message naming the gap and the affected shift
-unless you explicitly confirm (`"confirmGap": true`); confirming persists
-the gap and notifies the neighbor's assigned member. The week-grid response
-includes each shift's resulting gap, if any, so the calendar can flag
-uncovered stretches of the day.
 
 ## Notifications
 
@@ -218,9 +220,9 @@ initialization race, not a misconfiguration.
 
 ## Roadmap
 
-Every feature in the original spec is built. Admin-editable shift-block
-times (currently fixed defaults) is the only enhancement still on the
-table, and isn't currently planned. See `CLAUDE.md` for current
+Every feature in the original spec is built, plus a post-launch
+rearchitecture of the calendar away from a fixed Day/Evening/Overnight
+shift model to fully blockless scheduling — see `CLAUDE.md` for current
 architecture notes.
 
 ## License

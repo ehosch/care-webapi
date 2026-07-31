@@ -4,9 +4,13 @@ public interface IShiftService
 {
     Task<List<ShiftDto>> GetShiftsAsync(DateOnly weekStart, CancellationToken cancellationToken);
 
-    Task AssignShiftAsync(Guid shiftId, string? userId, CancellationToken cancellationToken);
+    Task<ShiftDto> CreateShiftAsync(DateOnly date, TimeSpan startTime, TimeSpan endTime, string assignedUserId, string requestingUserId, bool isAdmin, CancellationToken cancellationToken);
 
-    Task ClaimShiftAsync(Guid shiftId, string userId, CancellationToken cancellationToken);
+    Task AssignShiftAsync(Guid shiftId, string userId, CancellationToken cancellationToken);
+
+    Task DeleteShiftAsync(Guid shiftId, CancellationToken cancellationToken);
+
+    Task<ShiftDto> AdjustShiftTimesAsync(Guid shiftId, DateOnly date, TimeSpan startTime, TimeSpan endTime, string requestingUserId, bool isAdmin, CancellationToken cancellationToken);
 
     Task CreateReplacementRequestAsync(Guid shiftId, string requestedByUserId, string? reason, CancellationToken cancellationToken);
 
@@ -19,6 +23,4 @@ public interface IShiftService
     Task<List<ShiftNoteDto>> GetShiftNotesAsync(Guid shiftId, CancellationToken cancellationToken);
 
     Task<ShiftNoteDto> AddShiftNoteAsync(Guid shiftId, string authorUserId, string text, CancellationToken cancellationToken);
-
-    Task<ShiftDto> AdjustShiftTimesAsync(Guid shiftId, TimeSpan startTime, TimeSpan endTime, bool confirmGap, string requestingUserId, bool isAdmin, CancellationToken cancellationToken);
 }

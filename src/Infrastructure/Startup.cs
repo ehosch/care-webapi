@@ -76,7 +76,6 @@ public static class Startup
             .UseAuthentication()
             .UseAuthorization()
             .UseHangfireDashboardWithAuth(config)
-            .UseShiftGenerationJob()
             .UseOpenApiDocumentation();
 
     public static IEndpointRouteBuilder MapEndpoints(this IEndpointRouteBuilder builder)

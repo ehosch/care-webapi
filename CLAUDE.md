@@ -10,7 +10,7 @@ frontend: `../care-wasm/`.
 
 ```
 src/
-├── Core/Domain/          # Entities: Invite, Document, ShiftTemplate, Shift, ReplacementRequest, ShiftNote
+├── Core/Domain/          # Entities: Invite, Document, Shift, ReplacementRequest, ShiftNote
 ├── Core/Application/     # Interfaces (ITokenService, IUserService, IMailService, ISmsService, INotificationService, IDocumentService, IDocumentStorageService, IShiftService — shifts + replacement requests + notes) + DTOs — see note below
 ├── Infrastructure/       # EF Core (MySQL/Pomelo), ASP.NET Identity, JWT auth, Hangfire, Mailing, Sms, Notifications, Serilog, NSwag
 ├── Host/                 # ASP.NET Core entry point, controllers, Configurations/
@@ -198,6 +198,11 @@ the compose file.
 
 ## Known gotchas from Phase 3 (Care Calendar Core)
 
+**Superseded by Phase 9** — `ShiftType`, `ShiftTemplate`, and the
+`ShiftGenerationJob` described below were removed entirely; see Phase 9's
+section for the replacement model. Left here for history/context on why
+things were originally built this way.
+
 - **`ShiftTemplate`/`Shift`/`ShiftType`/`ShiftStatus` entities, their EF
   configs, and DbSets all existed since the Phase 0 scaffold** — only the
   service/controller/UI and the actual generation logic were missing. Don't
@@ -349,33 +354,90 @@ the compose file.
   (`Password` `MinLength(8)`, `EmailAddress` checks in
   `Core/Application/Identity/Users/Requests.cs`) so the underlying message
   itself reads naturally once surfaced correctly.
-- **`ShiftDto.GapAfterMinutes`** is computed in `GetShiftsAsync` by zipping
-  each shift with the next chronologically-ordered one (`Day → Evening →
-  Overnight → next date's Day`) and diffing absolute `DateTime`s (not raw
-  `TimeSpan`s — the Overnight shift's end wraps past midnight, so absolute
-  start/end must be computed via `date.ToDateTime(...)` with an
-  `end <= start ? end.AddDays(1) : end` guard, same convention used
-  everywhere else this app crosses midnight). Null at the edge of the
-  requested week — the boundary into the next/previous week isn't loaded,
-  a known display-only limitation, not worth an extra fetch.
-- **`AdjustShiftTimesAsync` (`PUT /api/shifts/{id}/times`) enforces
-  admin-or-assignee, not just Admin** — unlike `AssignShiftAsync`, this
-  endpoint has no `[Authorize(Roles = "Admin")]` on the controller; the
-  service itself throws `ForbiddenException` unless `isAdmin ||
-  shift.AssignedUserId == requestingUserId`, so an assigned member can
-  adjust their own shift's times without admin rights.
-- **Adjusting a shift's time against a neighboring shift branches on that
-  neighbor's `Status`, not a single always-conflict/always-auto-adjust
-  rule**: if the neighbor is `Open`, its touching boundary is silently
-  auto-adjusted to close the gap (nobody's assigned yet, nothing to warn).
-  If the neighbor is `Assigned`/`ReplacementRequested`, the call throws
-  `ConflictException` (409) naming the gap length and the neighbor's shift
-  unless the request sets `ConfirmGap: true` — the client is expected to
-  show that message and retry with confirmation, not treat 409 as a
-  dead-end error. On confirm, the gap is persisted (not silently closed)
-  and `INotificationService.NotifyScheduleGapAsync` fires to the
-  neighbor's assigned user, mirroring the existing Phase 6 notification
-  triggers.
+- **`ShiftDto.GapAfterMinutes` and the `ConfirmGap`/409 flow described
+  below are gone as of Phase 9** — see that section. `AdjustShiftTimesAsync`
+  enforcing admin-or-assignee (not just Admin) is still true, though; that
+  part carried forward unchanged.
+
+## Known gotchas from Phase 9 (Blockless Shift Scheduling)
+
+Live production testing of Phase 8's Day/Evening/Overnight calendar surfaced
+a real bug (extending a shift's boundary *outward* into a neighboring Open
+shift silently did nothing — `AdjustShiftTimesAsync` only ever checked for a
+*positive* gap, never an overlap) and a bigger ask: drop the fixed shift-type
+model entirely. A day is now just 24 fillable hourly blocks with no
+predesignated Day/Evening/Overnight structure — a "shift" doesn't exist until
+someone claims or is assigned a contiguous run of blocks.
+
+- **`ShiftType` and `ShiftTemplate` are gone** — deleted, not deprecated.
+  `Shift` no longer has a `ShiftType` property; there is no more nightly
+  `ShiftGenerationJob` (deleted), no more `ShiftTemplate` seeding in
+  `ApplicationDbInitializer`, and no more rolling-4-week generation window.
+  A day starts with zero `Shift` rows; coverage only exists once someone
+  creates it.
+- **Uncovered time is the *absence* of a row, not `Status.Open`** —
+  `ShiftStatus.Open` is never produced anymore. The enum ordinal is kept
+  (not renumbered/removed) purely because EF stores it as a plain int with
+  no `HasConversion`; renumbering would silently reinterpret existing
+  `Assigned`(1)/`ReplacementRequested`(2) rows. `Shift.AssignedUserId`
+  flipped from `string?` to `string` (non-nullable) — a row's existence now
+  *implies* assignment.
+- **`ClaimShiftAsync` is deleted** — claiming previously-uncovered time is
+  now just `CreateShiftAsync` with yourself as the assignee. There's no
+  more distinction between "claim an existing Open shift" and "create a
+  new one"; they're the same operation.
+- **The `confirmGap`/409 gap-confirmation flow from Phase 8 is gone
+  entirely, not just its `GapAfterMinutes` display field** — under the new
+  model, adjacent shifts always stay glued together when a boundary moves
+  (grow into a neighbor → shrink or fully absorb it; shrink your own edge →
+  an adjacent shift reclaims the vacated space, or it's just left
+  uncovered if nothing's there). There is no remaining code path that can
+  leave a deliberate gap between two shifts that were touching, so nothing
+  needs a confirmation step for that case anymore.
+- **Growing into a shift you don't fully swallow *shrinks* it; growing
+  into one you *do* fully swallow deletes it** (and notifies its former
+  assignee — `NotifyShiftRemovedAsync`, no confirmation gate). A resize
+  that would require *splitting* an existing shift (sticking out on both
+  sides of the new range) throws `ConflictException` instead of actually
+  splitting — confirmed unreachable through the designed UI, since only
+  the cells immediately adjacent to a shift's current boundary are ever
+  clickable, but the service still guards against it defensively.
+- **`ResolveOverlapsAsync` in `ShiftService.cs` is the crux of the whole
+  feature** — shared by `CreateShiftAsync` (growing from nothing) and the
+  growing side of `AdjustShiftTimesAsync`. It finds every existing shift
+  overlapping the target range via real interval-overlap math
+  (`FindOverlappingShiftsAsync`, not a `(Date, ShiftType)` lookup, since
+  shifts no longer align to any fixed type or template) and either shrinks
+  or deletes each one. The shrinking side of a resize (pulling your own
+  boundary in) is handled separately — `FindShiftEndingExactlyAtAsync`/
+  `FindShiftStartingExactlyAtAsync` look for whichever single shift touches
+  the vacated instant, since shrinking can only ever affect one neighbor,
+  never several.
+- **Deleting a shift blocks on a pending replacement request** (own
+  `ConflictException`, both in `DeleteShiftAsync` and inside
+  `ResolveOverlapsAsync`'s full-absorb branch) — can't silently vanish a
+  shift someone's actively trying to get covered. Shift notes have no such
+  guard and are just deleted along with the shift (`ReplacementRequest`/
+  `ShiftNote` both have plain `Guid ShiftId` columns with no FK/cascade
+  configured — confirmed via `CareConfigurations.cs` — so EF won't
+  cascade-delete them on its own; `DeleteShiftAsync` and
+  `ResolveOverlapsAsync` both do it explicitly).
+- **A single shift can't exceed 24 hours** (`MaxShiftDuration` guard in
+  `ShiftService.cs`) — the `Date`/`StartTime`/`EndTime` representation
+  (kept as-is rather than switching to `StartsAt`/`EndsAt` `DateTime`
+  columns) relies on "if `EndTime <= StartTime`, it wrapped to the next
+  day," which can't cleanly represent anything longer than that anyway.
+  No legitimate use case in this app needs one continuous unbroken shift
+  longer than a day.
+- **The `RemoveShiftTypeAndTemplates` migration deletes data, not just
+  schema** — `DELETE FROM Shifts WHERE AssignedUserId IS NULL` runs before
+  the column/table drops, removing every `Open` row (the only ones that
+  could have a null `AssignedUserId`) since they have no place under the
+  new model. This is real, irreversible data loss by design and runs
+  unattended the moment a new deployment boots
+  (`ApplicationDbInitializer` auto-applies pending migrations) — back up
+  the `Shifts` table before deploying this to a database with real data.
+  `Down()` only restores schema shape; it can't resurrect deleted rows.
 
 ## Data model
 
@@ -401,9 +463,14 @@ plus phone-number collection (`RegisterRequest.PhoneNumber`,
 `IUserService.UpdatePhoneNumberAsync`). Phase 7 fixed the calendar's
 mobile-overflow gotcha (see care-wasm's `CLAUDE.md`) — every planned
 feature and fix from the original spec is done. Phase 8 (post-go-live,
-after real production use) added friendlier validation error text,
-`ShiftDto.GapAfterMinutes`, and `IShiftService.AdjustShiftTimesAsync` (an
-admin-or-assignee endpoint for nudging a shift's start/end time, with
-auto-adjust-if-Open-neighbor / confirm-then-notify-if-Assigned-neighbor
-gap handling) to support care-wasm's calendar color-coding, time display,
-and gap-indicator UI.
+after real production use) added friendlier validation error text and an
+admin-or-assignee `AdjustShiftTimesAsync` endpoint for nudging a shift's
+start/end time. Phase 9 replaced the fixed Day/Evening/Overnight model
+entirely — `ShiftType`/`ShiftTemplate`/`ShiftGenerationJob` are gone, a day
+is just fillable hourly blocks with no predesignated structure, a "shift"
+is created the moment blocks are assigned/claimed, and adjusting a shift's
+boundary always cascades into whatever's adjacent (shrink/absorb-delete a
+neighbor it grows into, let a neighbor reclaim space it shrinks away from)
+with a notification rather than the old gap-confirmation flow. See Phase
+9's gotchas section above for the full detail — this superseded most of
+Phase 3/4's original framing and all of Phase 8's gap-indicator work.

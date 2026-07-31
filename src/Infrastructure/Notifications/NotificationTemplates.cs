@@ -1,30 +1,28 @@
-using Care.WebApi.Domain.Care;
-
 namespace Care.WebApi.Infrastructure.Notifications;
 
 public static class NotificationTemplates
 {
-    public static string ShiftAssignedEmail(DateOnly date, ShiftType shiftType) => $"""
-        <p>You're now assigned to the {shiftType} shift on {date:dddd, MMMM d}.</p>
+    public static string ShiftAssignedEmail(DateOnly date) => $"""
+        <p>You're now assigned to a shift on {date:dddd, MMMM d}.</p>
         """;
 
-    public static string ShiftAssignedSms(DateOnly date, ShiftType shiftType) =>
-        $"Care Coordination: you're now assigned to the {shiftType} shift on {date:ddd, MMM d}.";
+    public static string ShiftAssignedSms(DateOnly date) =>
+        $"Care Coordination: you're now assigned to a shift on {date:ddd, MMM d}.";
 
-    public static string ReplacementRequestedEmail(DateOnly date, ShiftType shiftType, string requestedByName, string? reason) => $"""
-        <p>{requestedByName} requested a replacement for the {shiftType} shift on {date:dddd, MMMM d}{(string.IsNullOrEmpty(reason) ? "" : $" — \"{reason}\"")}.</p>
+    public static string ReplacementRequestedEmail(DateOnly date, string requestedByName, string? reason) => $"""
+        <p>{requestedByName} requested a replacement for their shift on {date:dddd, MMMM d}{(string.IsNullOrEmpty(reason) ? "" : $" — \"{reason}\"")}.</p>
         <p>Open the Replacement Requests page if you're able to cover it.</p>
         """;
 
-    public static string ReplacementRequestedSms(DateOnly date, ShiftType shiftType, string requestedByName) =>
-        $"Care Coordination: {requestedByName} needs a replacement for the {shiftType} shift on {date:ddd, MMM d}.";
+    public static string ReplacementRequestedSms(DateOnly date, string requestedByName) =>
+        $"Care Coordination: {requestedByName} needs a replacement for their shift on {date:ddd, MMM d}.";
 
-    public static string ReplacementClaimedEmail(DateOnly date, ShiftType shiftType, string claimedByName) => $"""
-        <p>{claimedByName} has covered your {shiftType} shift on {date:dddd, MMMM d}. You're released from it.</p>
+    public static string ReplacementClaimedEmail(DateOnly date, string claimedByName) => $"""
+        <p>{claimedByName} has covered your shift on {date:dddd, MMMM d}. You're released from it.</p>
         """;
 
-    public static string ReplacementClaimedSms(DateOnly date, ShiftType shiftType, string claimedByName) =>
-        $"Care Coordination: {claimedByName} covered your {shiftType} shift on {date:ddd, MMM d}.";
+    public static string ReplacementClaimedSms(DateOnly date, string claimedByName) =>
+        $"Care Coordination: {claimedByName} covered your shift on {date:ddd, MMM d}.";
 
     public static string DocumentUploadedEmail(string title, string category, string uploadedByName) => $"""
         <p>{uploadedByName} uploaded a new document: "{title}" ({category}).</p>
@@ -33,10 +31,19 @@ public static class NotificationTemplates
     public static string DocumentUploadedSms(string title, string uploadedByName) =>
         $"Care Coordination: {uploadedByName} uploaded a new document — \"{title}\".";
 
-    public static string ScheduleGapEmail(DateOnly date, ShiftType shiftType, int gapMinutes) => $"""
-        <p>A schedule change has left a {gapMinutes}-minute gap next to your {shiftType} shift on {date:dddd, MMMM d}. You may want to coordinate coverage for that window.</p>
+    public static string ShiftRemovedEmail(DateOnly date, TimeSpan startTime, TimeSpan endTime) => $"""
+        <p>Your shift on {date:dddd, MMMM d} from {FormatTime(startTime)}–{FormatTime(endTime)} was removed.</p>
         """;
 
-    public static string ScheduleGapSms(DateOnly date, ShiftType shiftType, int gapMinutes) =>
-        $"Care Coordination: a {gapMinutes}-min gap opened up next to your {shiftType} shift on {date:ddd, MMM d}.";
+    public static string ShiftRemovedSms(DateOnly date, TimeSpan startTime, TimeSpan endTime) =>
+        $"Care Coordination: your shift on {date:ddd, MMM d} from {FormatTime(startTime)}-{FormatTime(endTime)} was removed.";
+
+    public static string ShiftBoundaryChangedEmail(DateOnly date, TimeSpan newStartTime, TimeSpan newEndTime) => $"""
+        <p>Your shift on {date:dddd, MMMM d} was adjusted — it's now {FormatTime(newStartTime)}–{FormatTime(newEndTime)}.</p>
+        """;
+
+    public static string ShiftBoundaryChangedSms(DateOnly date, TimeSpan newStartTime, TimeSpan newEndTime) =>
+        $"Care Coordination: your shift on {date:ddd, MMM d} is now {FormatTime(newStartTime)}-{FormatTime(newEndTime)}.";
+
+    private static string FormatTime(TimeSpan time) => DateTime.Today.Add(time).ToString("h:mm tt");
 }

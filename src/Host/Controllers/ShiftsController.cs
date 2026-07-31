@@ -20,6 +20,12 @@ public class ShiftsController : ControllerBase
     public async Task<ActionResult<List<ShiftDto>>> GetShiftsAsync(DateOnly weekStart, CancellationToken cancellationToken) =>
         await _shiftService.GetShiftsAsync(weekStart, cancellationToken);
 
+    [HttpPost]
+    public async Task<ActionResult<ShiftDto>> CreateAsync(CreateShiftRequest request, CancellationToken cancellationToken) =>
+        await _shiftService.CreateShiftAsync(
+            request.Date, request.StartTime, request.EndTime,
+            request.AssignedUserId ?? RequestingUserId, RequestingUserId, User.IsInRole("Admin"), cancellationToken);
+
     [HttpPut("{id}/assign")]
     [Authorize(Roles = "Admin")]
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -29,11 +35,12 @@ public class ShiftsController : ControllerBase
         return Ok();
     }
 
-    [HttpPost("{id}/claim")]
+    [HttpDelete("{id}")]
+    [Authorize(Roles = "Admin")]
     [ProducesResponseType(StatusCodes.Status200OK)]
-    public async Task<IActionResult> ClaimAsync(Guid id, CancellationToken cancellationToken)
+    public async Task<IActionResult> DeleteAsync(Guid id, CancellationToken cancellationToken)
     {
-        await _shiftService.ClaimShiftAsync(id, RequestingUserId, cancellationToken);
+        await _shiftService.DeleteShiftAsync(id, cancellationToken);
         return Ok();
     }
 
@@ -55,7 +62,7 @@ public class ShiftsController : ControllerBase
 
     [HttpPut("{id}/times")]
     public async Task<ActionResult<ShiftDto>> AdjustTimesAsync(Guid id, AdjustShiftTimesRequest request, CancellationToken cancellationToken) =>
-        await _shiftService.AdjustShiftTimesAsync(id, request.StartTime, request.EndTime, request.ConfirmGap, RequestingUserId, User.IsInRole("Admin"), cancellationToken);
+        await _shiftService.AdjustShiftTimesAsync(id, request.Date, request.StartTime, request.EndTime, RequestingUserId, User.IsInRole("Admin"), cancellationToken);
 
     private string RequestingUserId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 }

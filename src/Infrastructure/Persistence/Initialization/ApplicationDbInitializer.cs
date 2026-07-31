@@ -1,4 +1,3 @@
-using Care.WebApi.Domain.Care;
 using Care.WebApi.Infrastructure.Identity;
 using Care.WebApi.Infrastructure.Persistence.Context;
 using Microsoft.AspNetCore.Identity;
@@ -61,21 +60,6 @@ public static class ApplicationDbInitializer
             {
                 logger.LogError("Failed to seed default admin user: {Errors}", string.Join(", ", result.Errors.Select(e => e.Description)));
             }
-        }
-
-        if (!await context.ShiftTemplates.AnyAsync(cancellationToken))
-        {
-            var templates = new List<ShiftTemplate>();
-            foreach (DayOfWeek day in Enum.GetValues<DayOfWeek>())
-            {
-                templates.Add(new ShiftTemplate { DayOfWeek = day, ShiftType = ShiftType.Day, StartTime = new TimeSpan(7, 0, 0), EndTime = new TimeSpan(15, 0, 0) });
-                templates.Add(new ShiftTemplate { DayOfWeek = day, ShiftType = ShiftType.Evening, StartTime = new TimeSpan(15, 0, 0), EndTime = new TimeSpan(23, 0, 0) });
-                templates.Add(new ShiftTemplate { DayOfWeek = day, ShiftType = ShiftType.Overnight, StartTime = new TimeSpan(23, 0, 0), EndTime = new TimeSpan(7, 0, 0) });
-            }
-
-            context.ShiftTemplates.AddRange(templates);
-            await context.SaveChangesAsync(cancellationToken);
-            logger.LogInformation("Seeded {Count} default shift templates.", templates.Count);
         }
     }
 }

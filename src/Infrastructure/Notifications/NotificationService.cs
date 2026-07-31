@@ -1,7 +1,6 @@
 using Care.WebApi.Application.Common.Mailing;
 using Care.WebApi.Application.Common.Notifications;
 using Care.WebApi.Application.Common.Sms;
-using Care.WebApi.Domain.Care;
 using Care.WebApi.Infrastructure.Identity;
 using Hangfire;
 using Microsoft.AspNetCore.Identity;
@@ -20,7 +19,7 @@ internal class NotificationService : INotificationService
         _jobClient = jobClient;
     }
 
-    public async Task NotifyShiftAssignedAsync(string userId, DateOnly date, ShiftType shiftType, CancellationToken cancellationToken)
+    public async Task NotifyShiftAssignedAsync(string userId, DateOnly date, CancellationToken cancellationToken)
     {
         if (await _userManager.FindByIdAsync(userId) is not { } user)
         {
@@ -30,11 +29,11 @@ internal class NotificationService : INotificationService
         EnqueueNotification(
             user,
             "You've been assigned a shift",
-            NotificationTemplates.ShiftAssignedEmail(date, shiftType),
-            NotificationTemplates.ShiftAssignedSms(date, shiftType));
+            NotificationTemplates.ShiftAssignedEmail(date),
+            NotificationTemplates.ShiftAssignedSms(date));
     }
 
-    public async Task NotifyReplacementRequestedAsync(DateOnly date, ShiftType shiftType, string requestedByUserId, string? reason, CancellationToken cancellationToken)
+    public async Task NotifyReplacementRequestedAsync(DateOnly date, string requestedByUserId, string? reason, CancellationToken cancellationToken)
     {
         string requestedByName = await GetNameAsync(requestedByUserId);
 
@@ -43,12 +42,12 @@ internal class NotificationService : INotificationService
             EnqueueNotification(
                 user,
                 "Replacement requested",
-                NotificationTemplates.ReplacementRequestedEmail(date, shiftType, requestedByName, reason),
-                NotificationTemplates.ReplacementRequestedSms(date, shiftType, requestedByName));
+                NotificationTemplates.ReplacementRequestedEmail(date, requestedByName, reason),
+                NotificationTemplates.ReplacementRequestedSms(date, requestedByName));
         }
     }
 
-    public async Task NotifyReplacementClaimedAsync(string requesterUserId, string claimedByUserId, DateOnly date, ShiftType shiftType, CancellationToken cancellationToken)
+    public async Task NotifyReplacementClaimedAsync(string requesterUserId, string claimedByUserId, DateOnly date, CancellationToken cancellationToken)
     {
         if (await _userManager.FindByIdAsync(requesterUserId) is not { } requester)
         {
@@ -60,8 +59,8 @@ internal class NotificationService : INotificationService
         EnqueueNotification(
             requester,
             "Your shift replacement was covered",
-            NotificationTemplates.ReplacementClaimedEmail(date, shiftType, claimedByName),
-            NotificationTemplates.ReplacementClaimedSms(date, shiftType, claimedByName));
+            NotificationTemplates.ReplacementClaimedEmail(date, claimedByName),
+            NotificationTemplates.ReplacementClaimedSms(date, claimedByName));
     }
 
     public async Task NotifyDocumentUploadedAsync(string title, string category, string uploadedByUserId, CancellationToken cancellationToken)
@@ -78,7 +77,7 @@ internal class NotificationService : INotificationService
         }
     }
 
-    public async Task NotifyScheduleGapAsync(string affectedUserId, DateOnly affectedDate, ShiftType affectedShiftType, int gapMinutes, CancellationToken cancellationToken)
+    public async Task NotifyShiftRemovedAsync(string affectedUserId, DateOnly date, TimeSpan startTime, TimeSpan endTime, CancellationToken cancellationToken)
     {
         if (await _userManager.FindByIdAsync(affectedUserId) is not { } user)
         {
@@ -87,9 +86,23 @@ internal class NotificationService : INotificationService
 
         EnqueueNotification(
             user,
-            "A schedule gap opened up near your shift",
-            NotificationTemplates.ScheduleGapEmail(affectedDate, affectedShiftType, gapMinutes),
-            NotificationTemplates.ScheduleGapSms(affectedDate, affectedShiftType, gapMinutes));
+            "Your shift was removed",
+            NotificationTemplates.ShiftRemovedEmail(date, startTime, endTime),
+            NotificationTemplates.ShiftRemovedSms(date, startTime, endTime));
+    }
+
+    public async Task NotifyShiftBoundaryChangedAsync(string affectedUserId, DateOnly date, TimeSpan newStartTime, TimeSpan newEndTime, CancellationToken cancellationToken)
+    {
+        if (await _userManager.FindByIdAsync(affectedUserId) is not { } user)
+        {
+            return;
+        }
+
+        EnqueueNotification(
+            user,
+            "Your shift's time changed",
+            NotificationTemplates.ShiftBoundaryChangedEmail(date, newStartTime, newEndTime),
+            NotificationTemplates.ShiftBoundaryChangedSms(date, newStartTime, newEndTime));
     }
 
     private void EnqueueNotification(ApplicationUser user, string subject, string emailBody, string smsBody)

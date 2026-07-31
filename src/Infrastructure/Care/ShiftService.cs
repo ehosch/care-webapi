@@ -11,6 +11,8 @@ namespace Care.WebApi.Infrastructure.Care;
 
 internal class ShiftService : IShiftService
 {
+    private static readonly TimeSpan MaxShiftDuration = TimeSpan.FromHours(24);
+
     private readonly ApplicationDbContext _db;
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly INotificationService _notificationService;
@@ -29,7 +31,7 @@ internal class ShiftService : IShiftService
         var shifts = await _db.Shifts
             .Where(s => s.Date >= weekStart && s.Date <= weekEnd)
             .OrderBy(s => s.Date)
-            .ThenBy(s => s.ShiftType)
+            .ThenBy(s => s.StartTime)
             .ToListAsync(cancellationToken);
 
         var shiftIds = shifts.Select(s => s.Id).ToList();
@@ -44,92 +46,192 @@ internal class ShiftService : IShiftService
             .Select(g => new { ShiftId = g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.ShiftId, x => x.Count, cancellationToken);
 
-        var names = await ResolveNamesAsync(shifts
-            .Where(s => s.AssignedUserId != null)
-            .Select(s => s.AssignedUserId!));
+        var names = await ResolveNamesAsync(shifts.Select(s => s.AssignedUserId));
 
         var result = new List<ShiftDto>();
-        for (int i = 0; i < shifts.Count; i++)
+        foreach (var s in shifts)
         {
-            var s = shifts[i];
             var pending = pendingByShiftId.GetValueOrDefault(s.Id);
-
-            int? gapAfterMinutes = null;
-            if (i + 1 < shifts.Count)
-            {
-                var gap = GetAbsoluteStart(shifts[i + 1]) - GetAbsoluteEnd(s);
-                if (gap.TotalMinutes > 0)
-                {
-                    gapAfterMinutes = (int)gap.TotalMinutes;
-                }
-            }
 
             result.Add(new ShiftDto(
                 s.Id,
                 s.Date,
-                s.ShiftType,
                 s.StartTime,
                 s.EndTime,
                 s.AssignedUserId,
-                s.AssignedUserId is null ? null : names.GetValueOrDefault(s.AssignedUserId, "Unknown"),
+                names.GetValueOrDefault(s.AssignedUserId, "Unknown"),
                 s.Status,
                 pending?.Id,
                 pending?.RequestedByUserId,
-                noteCounts.GetValueOrDefault(s.Id),
-                gapAfterMinutes));
+                noteCounts.GetValueOrDefault(s.Id)));
         }
 
         return result;
     }
 
-    public async Task AssignShiftAsync(Guid shiftId, string? userId, CancellationToken cancellationToken)
+    public async Task<ShiftDto> CreateShiftAsync(DateOnly date, TimeSpan startTime, TimeSpan endTime, string assignedUserId, string requestingUserId, bool isAdmin, CancellationToken cancellationToken)
     {
-        var shift = await _db.Shifts.FindAsync([shiftId], cancellationToken)
-            ?? throw new NotFoundException("Shift not found.");
-
-        await CancelPendingRequestForShiftAsync(shiftId, cancellationToken);
-
-        if (userId is null)
+        if (startTime == endTime)
         {
-            shift.AssignedUserId = null;
-            shift.Status = ShiftStatus.Open;
-        }
-        else
-        {
-            if (await _userManager.FindByIdAsync(userId) is null)
-            {
-                throw new NotFoundException("User not found.");
-            }
-
-            shift.AssignedUserId = userId;
-            shift.Status = ShiftStatus.Assigned;
+            throw new ConflictException("Start and end time cannot be the same.");
         }
 
-        shift.LastModifiedOn = DateTime.UtcNow;
+        if (!isAdmin && assignedUserId != requestingUserId)
+        {
+            throw new ForbiddenException("You can only claim shifts for yourself.");
+        }
+
+        if (await _userManager.FindByIdAsync(assignedUserId) is null)
+        {
+            throw new NotFoundException("User not found.");
+        }
+
+        var newAbsoluteStart = date.ToDateTime(TimeOnly.FromTimeSpan(startTime));
+        var newAbsoluteEnd = date.ToDateTime(TimeOnly.FromTimeSpan(endTime));
+        if (newAbsoluteEnd <= newAbsoluteStart)
+        {
+            newAbsoluteEnd = newAbsoluteEnd.AddDays(1);
+        }
+
+        if (newAbsoluteEnd - newAbsoluteStart > MaxShiftDuration)
+        {
+            throw new ConflictException("A single shift can't be longer than 24 hours.");
+        }
+
+        var pendingNotifications = await ResolveOverlapsAsync(newAbsoluteStart, newAbsoluteEnd, excludeShiftId: null, cancellationToken);
+
+        var shift = new Shift
+        {
+            Date = date,
+            StartTime = startTime,
+            EndTime = endTime,
+            AssignedUserId = assignedUserId,
+            Status = ShiftStatus.Assigned
+        };
+        _db.Shifts.Add(shift);
+
         await _db.SaveChangesAsync(cancellationToken);
 
-        if (userId is not null)
-        {
-            await _notificationService.NotifyShiftAssignedAsync(userId, shift.Date, shift.ShiftType, cancellationToken);
-        }
+        await _notificationService.NotifyShiftAssignedAsync(assignedUserId, date, cancellationToken);
+        await FirePendingNotificationsAsync(pendingNotifications, cancellationToken);
+
+        return await MapToDtoAsync(shift, cancellationToken);
     }
 
-    public async Task ClaimShiftAsync(Guid shiftId, string userId, CancellationToken cancellationToken)
+    public async Task AssignShiftAsync(Guid shiftId, string userId, CancellationToken cancellationToken)
     {
         var shift = await _db.Shifts.FindAsync([shiftId], cancellationToken)
             ?? throw new NotFoundException("Shift not found.");
 
-        if (shift.Status != ShiftStatus.Open)
+        if (await _userManager.FindByIdAsync(userId) is null)
         {
-            throw new ConflictException("This shift is no longer open.");
+            throw new NotFoundException("User not found.");
         }
+
+        await CancelPendingRequestForShiftAsync(shiftId, cancellationToken);
 
         shift.AssignedUserId = userId;
         shift.Status = ShiftStatus.Assigned;
         shift.LastModifiedOn = DateTime.UtcNow;
         await _db.SaveChangesAsync(cancellationToken);
 
-        await _notificationService.NotifyShiftAssignedAsync(userId, shift.Date, shift.ShiftType, cancellationToken);
+        await _notificationService.NotifyShiftAssignedAsync(userId, shift.Date, cancellationToken);
+    }
+
+    public async Task DeleteShiftAsync(Guid shiftId, CancellationToken cancellationToken)
+    {
+        var shift = await _db.Shifts.FindAsync([shiftId], cancellationToken)
+            ?? throw new NotFoundException("Shift not found.");
+
+        if (await _db.ReplacementRequests.AnyAsync(r => r.ShiftId == shiftId && r.Status == ReplacementRequestStatus.Pending, cancellationToken))
+        {
+            throw new ConflictException("This shift has a pending replacement request and can't be removed right now.");
+        }
+
+        var notes = await _db.ShiftNotes.Where(n => n.ShiftId == shiftId).ToListAsync(cancellationToken);
+        _db.ShiftNotes.RemoveRange(notes);
+
+        string assignedUserId = shift.AssignedUserId;
+        DateOnly date = shift.Date;
+        TimeSpan startTime = shift.StartTime;
+        TimeSpan endTime = shift.EndTime;
+
+        _db.Shifts.Remove(shift);
+        await _db.SaveChangesAsync(cancellationToken);
+
+        await _notificationService.NotifyShiftRemovedAsync(assignedUserId, date, startTime, endTime, cancellationToken);
+    }
+
+    public async Task<ShiftDto> AdjustShiftTimesAsync(Guid shiftId, DateOnly date, TimeSpan startTime, TimeSpan endTime, string requestingUserId, bool isAdmin, CancellationToken cancellationToken)
+    {
+        var shift = await _db.Shifts.FindAsync([shiftId], cancellationToken)
+            ?? throw new NotFoundException("Shift not found.");
+
+        if (!isAdmin && shift.AssignedUserId != requestingUserId)
+        {
+            throw new ForbiddenException("You can only adjust the times of your own shift.");
+        }
+
+        if (startTime == endTime)
+        {
+            throw new ConflictException("Start and end time cannot be the same.");
+        }
+
+        var oldAbsoluteStart = GetAbsoluteStart(shift);
+        var oldAbsoluteEnd = GetAbsoluteEnd(shift);
+
+        var newAbsoluteStart = date.ToDateTime(TimeOnly.FromTimeSpan(startTime));
+        var newAbsoluteEnd = date.ToDateTime(TimeOnly.FromTimeSpan(endTime));
+        if (newAbsoluteEnd <= newAbsoluteStart)
+        {
+            newAbsoluteEnd = newAbsoluteEnd.AddDays(1);
+        }
+
+        if (newAbsoluteEnd - newAbsoluteStart > MaxShiftDuration)
+        {
+            throw new ConflictException("A single shift can't be longer than 24 hours.");
+        }
+
+        var pendingNotifications = new List<PendingShiftNotification>();
+
+        if (newAbsoluteStart < oldAbsoluteStart)
+        {
+            pendingNotifications.AddRange(await ResolveOverlapsAsync(newAbsoluteStart, oldAbsoluteStart, shiftId, cancellationToken));
+        }
+        else if (newAbsoluteStart > oldAbsoluteStart)
+        {
+            var neighbor = await FindShiftEndingExactlyAtAsync(oldAbsoluteStart, shiftId, cancellationToken);
+            if (neighbor is not null)
+            {
+                SetAbsoluteEnd(neighbor, newAbsoluteStart);
+                pendingNotifications.Add(new PendingShiftNotification(neighbor.AssignedUserId, neighbor.Date, neighbor.StartTime, neighbor.EndTime, WasRemoved: false));
+            }
+        }
+
+        if (newAbsoluteEnd > oldAbsoluteEnd)
+        {
+            pendingNotifications.AddRange(await ResolveOverlapsAsync(oldAbsoluteEnd, newAbsoluteEnd, shiftId, cancellationToken));
+        }
+        else if (newAbsoluteEnd < oldAbsoluteEnd)
+        {
+            var neighbor = await FindShiftStartingExactlyAtAsync(oldAbsoluteEnd, shiftId, cancellationToken);
+            if (neighbor is not null)
+            {
+                SetAbsoluteStart(neighbor, newAbsoluteEnd);
+                pendingNotifications.Add(new PendingShiftNotification(neighbor.AssignedUserId, neighbor.Date, neighbor.StartTime, neighbor.EndTime, WasRemoved: false));
+            }
+        }
+
+        shift.Date = DateOnly.FromDateTime(newAbsoluteStart);
+        shift.StartTime = newAbsoluteStart.TimeOfDay;
+        shift.EndTime = newAbsoluteEnd.TimeOfDay;
+        shift.LastModifiedOn = DateTime.UtcNow;
+
+        await _db.SaveChangesAsync(cancellationToken);
+
+        await FirePendingNotificationsAsync(pendingNotifications, cancellationToken);
+
+        return await MapToDtoAsync(shift, cancellationToken);
     }
 
     public async Task CreateReplacementRequestAsync(Guid shiftId, string requestedByUserId, string? reason, CancellationToken cancellationToken)
@@ -159,7 +261,7 @@ internal class ShiftService : IShiftService
         shift.LastModifiedOn = DateTime.UtcNow;
         await _db.SaveChangesAsync(cancellationToken);
 
-        await _notificationService.NotifyReplacementRequestedAsync(shift.Date, shift.ShiftType, requestedByUserId, reason, cancellationToken);
+        await _notificationService.NotifyReplacementRequestedAsync(shift.Date, requestedByUserId, reason, cancellationToken);
     }
 
     public async Task CancelReplacementRequestAsync(Guid requestId, string requestingUserId, CancellationToken cancellationToken)
@@ -217,7 +319,7 @@ internal class ShiftService : IShiftService
 
         await _db.SaveChangesAsync(cancellationToken);
 
-        await _notificationService.NotifyReplacementClaimedAsync(request.RequestedByUserId, claimingUserId, shift.Date, shift.ShiftType, cancellationToken);
+        await _notificationService.NotifyReplacementClaimedAsync(request.RequestedByUserId, claimingUserId, shift.Date, cancellationToken);
     }
 
     public async Task<List<ReplacementRequestDto>> GetReplacementQueueAsync(CancellationToken cancellationToken)
@@ -244,7 +346,6 @@ internal class ShiftService : IShiftService
                     r.Id,
                     r.ShiftId,
                     shift.Date,
-                    shift.ShiftType,
                     r.RequestedByUserId,
                     names.GetValueOrDefault(r.RequestedByUserId, "Unknown"),
                     r.Reason,
@@ -305,134 +406,113 @@ internal class ShiftService : IShiftService
         }
     }
 
-    public async Task<ShiftDto> AdjustShiftTimesAsync(Guid shiftId, TimeSpan startTime, TimeSpan endTime, bool confirmGap, string requestingUserId, bool isAdmin, CancellationToken cancellationToken)
+    /// <summary>
+    /// For each existing shift overlapping [rangeStart, rangeEnd) (excluding <paramref name="excludeShiftId"/>),
+    /// either shrinks its stuck-out edge to the new boundary, or — if fully contained within the new range —
+    /// deletes it (blocked if it has a pending replacement request). A shift sticking out on both sides would
+    /// require splitting it in two, which isn't supported; that's rejected outright since the designed UI can
+    /// never construct such a range (only boundary-adjacent cells are ever clickable).
+    /// </summary>
+    private async Task<List<PendingShiftNotification>> ResolveOverlapsAsync(DateTime rangeStart, DateTime rangeEnd, Guid? excludeShiftId, CancellationToken cancellationToken)
     {
-        var shift = await _db.Shifts.FindAsync([shiftId], cancellationToken)
-            ?? throw new NotFoundException("Shift not found.");
+        var notifications = new List<PendingShiftNotification>();
+        var overlapping = await FindOverlappingShiftsAsync(rangeStart, rangeEnd, excludeShiftId, cancellationToken);
 
-        if (!isAdmin && shift.AssignedUserId != requestingUserId)
+        foreach (var existing in overlapping)
         {
-            throw new ForbiddenException("You can only adjust the times of your own shift.");
-        }
+            var existingStart = GetAbsoluteStart(existing);
+            var existingEnd = GetAbsoluteEnd(existing);
+            bool sticksOutBefore = existingStart < rangeStart;
+            bool sticksOutAfter = existingEnd > rangeEnd;
 
-        if (startTime == endTime)
-        {
-            throw new ConflictException("Start and end time cannot be the same.");
-        }
-
-        var precedingShift = await _db.Shifts
-            .Where(s => s.Date < shift.Date || (s.Date == shift.Date && s.ShiftType < shift.ShiftType))
-            .OrderByDescending(s => s.Date).ThenByDescending(s => s.ShiftType)
-            .FirstOrDefaultAsync(cancellationToken);
-
-        var followingShift = await _db.Shifts
-            .Where(s => s.Date > shift.Date || (s.Date == shift.Date && s.ShiftType > shift.ShiftType))
-            .OrderBy(s => s.Date).ThenBy(s => s.ShiftType)
-            .FirstOrDefaultAsync(cancellationToken);
-
-        var newAbsoluteStart = shift.Date.ToDateTime(TimeOnly.FromTimeSpan(startTime));
-        var newAbsoluteEnd = shift.Date.ToDateTime(TimeOnly.FromTimeSpan(endTime));
-        if (newAbsoluteEnd <= newAbsoluteStart)
-        {
-            newAbsoluteEnd = newAbsoluteEnd.AddDays(1);
-        }
-
-        var conflictMessages = new List<string>();
-
-        if (precedingShift is not null)
-        {
-            var gap = newAbsoluteStart - GetAbsoluteEnd(precedingShift);
-            if (gap.TotalMinutes > 0)
+            if (sticksOutBefore && sticksOutAfter)
             {
-                if (precedingShift.Status == ShiftStatus.Open)
+                throw new ConflictException($"This would split the existing shift on {existing.Date:ddd, MMM d} in the middle, which isn't supported — adjust it from one of its edges instead.");
+            }
+
+            if (!sticksOutBefore && !sticksOutAfter)
+            {
+                if (await _db.ReplacementRequests.AnyAsync(r => r.ShiftId == existing.Id && r.Status == ReplacementRequestStatus.Pending, cancellationToken))
                 {
-                    precedingShift.EndTime = newAbsoluteStart.TimeOfDay;
-                    precedingShift.LastModifiedOn = DateTime.UtcNow;
+                    throw new ConflictException($"The shift on {existing.Date:ddd, MMM d} has a pending replacement request and can't be removed right now.");
                 }
-                else if (!confirmGap)
-                {
-                    conflictMessages.Add($"This will leave a {(int)gap.TotalMinutes}-minute gap before this shift, after the {precedingShift.ShiftType} shift on {precedingShift.Date:ddd, MMM d}.");
-                }
+
+                var notes = await _db.ShiftNotes.Where(n => n.ShiftId == existing.Id).ToListAsync(cancellationToken);
+                _db.ShiftNotes.RemoveRange(notes);
+
+                notifications.Add(new PendingShiftNotification(existing.AssignedUserId, existing.Date, existing.StartTime, existing.EndTime, WasRemoved: true));
+                _db.Shifts.Remove(existing);
+            }
+            else if (sticksOutBefore)
+            {
+                SetAbsoluteEnd(existing, rangeStart);
+                notifications.Add(new PendingShiftNotification(existing.AssignedUserId, existing.Date, existing.StartTime, existing.EndTime, WasRemoved: false));
+            }
+            else
+            {
+                SetAbsoluteStart(existing, rangeEnd);
+                notifications.Add(new PendingShiftNotification(existing.AssignedUserId, existing.Date, existing.StartTime, existing.EndTime, WasRemoved: false));
             }
         }
 
-        if (followingShift is not null)
+        return notifications;
+    }
+
+    private async Task FirePendingNotificationsAsync(List<PendingShiftNotification> notifications, CancellationToken cancellationToken)
+    {
+        foreach (var n in notifications)
         {
-            var gap = GetAbsoluteStart(followingShift) - newAbsoluteEnd;
-            if (gap.TotalMinutes > 0)
+            if (n.WasRemoved)
             {
-                if (followingShift.Status == ShiftStatus.Open)
-                {
-                    followingShift.StartTime = newAbsoluteEnd.TimeOfDay;
-                    followingShift.LastModifiedOn = DateTime.UtcNow;
-                }
-                else if (!confirmGap)
-                {
-                    conflictMessages.Add($"This will leave a {(int)gap.TotalMinutes}-minute gap after this shift, before the {followingShift.ShiftType} shift on {followingShift.Date:ddd, MMM d}.");
-                }
+                await _notificationService.NotifyShiftRemovedAsync(n.UserId, n.Date, n.StartTime, n.EndTime, cancellationToken);
+            }
+            else
+            {
+                await _notificationService.NotifyShiftBoundaryChangedAsync(n.UserId, n.Date, n.StartTime, n.EndTime, cancellationToken);
             }
         }
+    }
 
-        if (conflictMessages.Count > 0)
-        {
-            throw new ConflictException(string.Join(" ", conflictMessages) + " Continue anyway?");
-        }
+    private async Task<List<Shift>> FindOverlappingShiftsAsync(DateTime rangeStart, DateTime rangeEnd, Guid? excludeShiftId, CancellationToken cancellationToken)
+    {
+        var lo = DateOnly.FromDateTime(rangeStart.AddDays(-2));
+        var hi = DateOnly.FromDateTime(rangeEnd.AddDays(1));
 
-        shift.StartTime = startTime;
-        shift.EndTime = endTime;
+        var candidates = await _db.Shifts
+            .Where(s => s.Date >= lo && s.Date <= hi && (excludeShiftId == null || s.Id != excludeShiftId.Value))
+            .ToListAsync(cancellationToken);
+
+        return candidates
+            .Where(s => GetAbsoluteStart(s) < rangeEnd && GetAbsoluteEnd(s) > rangeStart)
+            .OrderBy(s => GetAbsoluteStart(s))
+            .ToList();
+    }
+
+    private async Task<Shift?> FindShiftEndingExactlyAtAsync(DateTime instant, Guid excludeShiftId, CancellationToken cancellationToken)
+    {
+        var candidates = await FindOverlappingShiftsAsync(instant.AddMinutes(-1), instant, excludeShiftId, cancellationToken);
+        return candidates.FirstOrDefault(s => GetAbsoluteEnd(s) == instant);
+    }
+
+    private async Task<Shift?> FindShiftStartingExactlyAtAsync(DateTime instant, Guid excludeShiftId, CancellationToken cancellationToken)
+    {
+        var candidates = await FindOverlappingShiftsAsync(instant, instant.AddMinutes(1), excludeShiftId, cancellationToken);
+        return candidates.FirstOrDefault(s => GetAbsoluteStart(s) == instant);
+    }
+
+    private static void SetAbsoluteStart(Shift shift, DateTime newStart)
+    {
+        var end = GetAbsoluteEnd(shift);
+        shift.Date = DateOnly.FromDateTime(newStart);
+        shift.StartTime = newStart.TimeOfDay;
+        shift.EndTime = end.TimeOfDay;
         shift.LastModifiedOn = DateTime.UtcNow;
+    }
 
-        await _db.SaveChangesAsync(cancellationToken);
-
-        if (confirmGap)
-        {
-            if (precedingShift is { Status: not ShiftStatus.Open, AssignedUserId: { } precedingUserId })
-            {
-                var gap = newAbsoluteStart - GetAbsoluteEnd(precedingShift);
-                if (gap.TotalMinutes > 0)
-                {
-                    await _notificationService.NotifyScheduleGapAsync(precedingUserId, precedingShift.Date, precedingShift.ShiftType, (int)gap.TotalMinutes, cancellationToken);
-                }
-            }
-
-            if (followingShift is { Status: not ShiftStatus.Open, AssignedUserId: { } followingUserId })
-            {
-                var gap = GetAbsoluteStart(followingShift) - newAbsoluteEnd;
-                if (gap.TotalMinutes > 0)
-                {
-                    await _notificationService.NotifyScheduleGapAsync(followingUserId, followingShift.Date, followingShift.ShiftType, (int)gap.TotalMinutes, cancellationToken);
-                }
-            }
-        }
-
-        int? gapAfterMinutesResult = null;
-        if (followingShift is not null)
-        {
-            var followingGap = GetAbsoluteStart(followingShift) - newAbsoluteEnd;
-            if (followingGap.TotalMinutes > 0)
-            {
-                gapAfterMinutesResult = (int)followingGap.TotalMinutes;
-            }
-        }
-
-        var names = await ResolveNamesAsync(shift.AssignedUserId is null ? Array.Empty<string>() : new[] { shift.AssignedUserId });
-        var pending = await _db.ReplacementRequests
-            .FirstOrDefaultAsync(r => r.ShiftId == shiftId && r.Status == ReplacementRequestStatus.Pending, cancellationToken);
-        int noteCount = await _db.ShiftNotes.CountAsync(n => n.ShiftId == shiftId, cancellationToken);
-
-        return new ShiftDto(
-            shift.Id,
-            shift.Date,
-            shift.ShiftType,
-            shift.StartTime,
-            shift.EndTime,
-            shift.AssignedUserId,
-            shift.AssignedUserId is null ? null : names.GetValueOrDefault(shift.AssignedUserId, "Unknown"),
-            shift.Status,
-            pending?.Id,
-            pending?.RequestedByUserId,
-            noteCount,
-            gapAfterMinutesResult);
+    private static void SetAbsoluteEnd(Shift shift, DateTime newEnd)
+    {
+        shift.EndTime = newEnd.TimeOfDay;
+        shift.LastModifiedOn = DateTime.UtcNow;
     }
 
     private static DateTime GetAbsoluteStart(Shift shift) =>
@@ -443,6 +523,26 @@ internal class ShiftService : IShiftService
         var start = GetAbsoluteStart(shift);
         var end = shift.Date.ToDateTime(TimeOnly.FromTimeSpan(shift.EndTime));
         return end <= start ? end.AddDays(1) : end;
+    }
+
+    private async Task<ShiftDto> MapToDtoAsync(Shift shift, CancellationToken cancellationToken)
+    {
+        var names = await ResolveNamesAsync([shift.AssignedUserId]);
+        var pending = await _db.ReplacementRequests
+            .FirstOrDefaultAsync(r => r.ShiftId == shift.Id && r.Status == ReplacementRequestStatus.Pending, cancellationToken);
+        int noteCount = await _db.ShiftNotes.CountAsync(n => n.ShiftId == shift.Id, cancellationToken);
+
+        return new ShiftDto(
+            shift.Id,
+            shift.Date,
+            shift.StartTime,
+            shift.EndTime,
+            shift.AssignedUserId,
+            names.GetValueOrDefault(shift.AssignedUserId, "Unknown"),
+            shift.Status,
+            pending?.Id,
+            pending?.RequestedByUserId,
+            noteCount);
     }
 
     private async Task<Dictionary<string, string>> ResolveNamesAsync(IEnumerable<string> userIds)
@@ -458,4 +558,6 @@ internal class ShiftService : IShiftService
 
         return names;
     }
+
+    private sealed record PendingShiftNotification(string UserId, DateOnly Date, TimeSpan StartTime, TimeSpan EndTime, bool WasRemoved);
 }
