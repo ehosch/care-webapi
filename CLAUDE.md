@@ -476,6 +476,46 @@ Four independent fixes from live testing after Phase 9 shipped.
   its own Blob/JS-interop handling, regardless of what `Content-Disposition`
   the `File()` result sets. See care-wasm's `CLAUDE.md` for the actual fix.
 
+## Known gotchas from Phase 11 (Self-Service My Account)
+
+Live testing surfaced a gap: nobody — Admin or Member — had any way to
+change their own email, phone number, or password while logged in. Admins
+could edit *other* users' phone numbers from the Users page, and the
+logged-out forgot-password flow covered password recovery, but there was
+no self-service equivalent for an already-authenticated user.
+
+- **Email changes require confirming the new address first, not an
+  immediate change** — a deliberate, more-work choice (locked in via an
+  explicit design decision, not a default) to match how every other
+  sensitive account action in this app already works (invites, password
+  resets). `RequestEmailChangeAsync` rejects if `FindByEmailAsync(newEmail)`
+  already resolves to a user, then `GenerateChangeEmailTokenAsync` + emails
+  a link to **the new address** (not the old one) — the account's current
+  email never changes until that link is clicked.
+  `ConfirmEmailChangeAsync` calls `ChangeEmailAsync` then
+  `SetUserNameAsync` to keep `UserName`/`Email` in sync, matching how
+  `CreateInviteAsync` always sets them equal at creation.
+- **All four new `me/*`-prefixed actions on `UsersController` use only the
+  controller's default `[Authorize]`** (no role restriction) and are
+  scoped via `RequestingUserId`, not a route `{id}` — there's no way for
+  one user to touch another's account through these endpoints, unlike the
+  existing Admin-only `{id}`-scoped routes (`GetUsersAsync`,
+  `UpdatePhoneNumberAsync`, etc.) which this phase left untouched.
+  `ChangePasswordAsync` just forwards to `UserManager.ChangePasswordAsync`
+  — a wrong current password surfaces through Identity's own
+  `IdentityResult` errors, no separate check needed.
+- **`POST /api/users/confirm-email-change` is `[AllowAnonymous]`** — same
+  reasoning as `reset-password`: the browser clicking the emailed link may
+  not have an active session (or may have a *different* user's session
+  cached), so it can't require a Bearer token. Added to care-wasm's
+  `JwtAuthenticationHeaderHandler.AnonymousPaths` allowlist — see that
+  repo's Phase 1 gotcha and `CLAUDE.md` for why forgetting this silently
+  breaks the logged-out case.
+- **No backend changes needed for the phone-number field** — it reuses
+  the existing `UpdatePhoneNumberRequest`/`UpdatePhoneNumberAsync`, just
+  exposed through a new self-scoped `PUT /api/users/me/phone-number`
+  route alongside the pre-existing Admin-only `{id}` one.
+
 ## Data model
 
 See `../CLAUDE_CARE.md` for the full spec (data model, phased build plan,
@@ -514,4 +554,9 @@ Phase 3/4's original framing and all of Phase 8's gap-indicator work.
 Phase 10 (four independent fixes from live testing) added the single-row
 `AppSettings`/`PatientName` concept and its `SettingsController`, a
 replacement-requests link on the replacement-requested notification, and
-`StartTime`/`EndTime` on `ReplacementRequestDto`.
+`StartTime`/`EndTime` on `ReplacementRequestDto`. Phase 11 added
+self-service account management (`GET /api/users/me`,
+`POST /api/users/me/change-password`,
+`POST /api/users/me/request-email-change`,
+`POST /api/users/confirm-email-change`) so any logged-in user can manage
+their own email/phone/password without Admin involvement.

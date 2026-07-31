@@ -66,6 +66,43 @@ public class UsersController : ControllerBase
         return Ok();
     }
 
+    [HttpGet("me")]
+    public async Task<ActionResult<UserDto>> GetMeAsync(CancellationToken cancellationToken) =>
+        await _userService.GetUserAsync(RequestingUserId, cancellationToken);
+
+    [HttpPut("me/phone-number")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<IActionResult> UpdateMyPhoneNumberAsync(UpdatePhoneNumberRequest request, CancellationToken cancellationToken)
+    {
+        await _userService.UpdatePhoneNumberAsync(RequestingUserId, request.PhoneNumber, cancellationToken);
+        return Ok();
+    }
+
+    [HttpPost("me/change-password")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<IActionResult> ChangePasswordAsync(ChangePasswordRequest request, CancellationToken cancellationToken)
+    {
+        await _userService.ChangePasswordAsync(RequestingUserId, request.CurrentPassword, request.NewPassword, cancellationToken);
+        return Ok();
+    }
+
+    [HttpPost("me/request-email-change")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<IActionResult> RequestEmailChangeAsync(RequestEmailChangeRequest request, CancellationToken cancellationToken)
+    {
+        await _userService.RequestEmailChangeAsync(RequestingUserId, request.NewEmail, Origin, cancellationToken);
+        return Ok();
+    }
+
+    [AllowAnonymous]
+    [HttpPost("confirm-email-change")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<IActionResult> ConfirmEmailChangeAsync(ConfirmEmailChangeRequest request, CancellationToken cancellationToken)
+    {
+        await _userService.ConfirmEmailChangeAsync(request.UserId, request.NewEmail, request.Token, cancellationToken);
+        return Ok();
+    }
+
     [AllowAnonymous]
     [HttpPost("register")]
     [ProducesResponseType(StatusCodes.Status200OK)]

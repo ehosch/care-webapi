@@ -163,6 +163,58 @@ internal class UserService : IUserService
         await _userManager.UpdateAsync(user);
     }
 
+    public async Task<UserDto> GetUserAsync(string userId, CancellationToken cancellationToken)
+    {
+        var user = await _userManager.FindByIdAsync(userId) ?? throw new NotFoundException("User not found.");
+        string role = (await _userManager.GetRolesAsync(user)).FirstOrDefault() ?? "Member";
+        return new UserDto(user.Id, user.Name, user.Email!, role, user.Status.ToString(), user.InvitedAt, user.JoinedAt, user.PhoneNumber);
+    }
+
+    public async Task ChangePasswordAsync(string userId, string currentPassword, string newPassword, CancellationToken cancellationToken)
+    {
+        var user = await _userManager.FindByIdAsync(userId) ?? throw new NotFoundException("User not found.");
+        var result = await _userManager.ChangePasswordAsync(user, currentPassword, newPassword);
+        if (!result.Succeeded)
+        {
+            throw new ConflictException(string.Join(" ", result.Errors.Select(e => e.Description)));
+        }
+    }
+
+    public async Task RequestEmailChangeAsync(string userId, string newEmail, string origin, CancellationToken cancellationToken)
+    {
+        newEmail = newEmail.Trim().ToLowerInvariant();
+        var user = await _userManager.FindByIdAsync(userId) ?? throw new NotFoundException("User not found.");
+
+        if (await _userManager.FindByEmailAsync(newEmail) is not null)
+        {
+            throw new ConflictException("A user with this email already exists.");
+        }
+
+        string token = await _userManager.GenerateChangeEmailTokenAsync(user, newEmail);
+        string link = $"{origin.TrimEnd('/')}/confirm-email-change?userId={Uri.EscapeDataString(user.Id)}&newEmail={Uri.EscapeDataString(newEmail)}&token={Uri.EscapeDataString(token)}";
+
+        _logger.LogInformation("Email change confirmation link for {UserId} -> {NewEmail}: {Link}", user.Id, newEmail, link);
+
+        string body = EmailTemplates.EmailChangeConfirmationEmail(link);
+        _jobClient.Enqueue<IMailService>(m => m.SendAsync(
+            new MailRequest(new List<string> { newEmail }, "Confirm your new Care Coordination email", body),
+            CancellationToken.None));
+    }
+
+    public async Task ConfirmEmailChangeAsync(string userId, string newEmail, string token, CancellationToken cancellationToken)
+    {
+        var user = await _userManager.FindByIdAsync(userId) ?? throw new NotFoundException("Invalid request.");
+        newEmail = newEmail.Trim().ToLowerInvariant();
+
+        var result = await _userManager.ChangeEmailAsync(user, newEmail, token);
+        if (!result.Succeeded)
+        {
+            throw new ConflictException(string.Join(" ", result.Errors.Select(e => e.Description)));
+        }
+
+        await _userManager.SetUserNameAsync(user, newEmail);
+    }
+
     public async Task ForgotPasswordAsync(string email, string origin, CancellationToken cancellationToken)
     {
         var user = await _userManager.FindByEmailAsync(email.Trim().ToLowerInvariant());

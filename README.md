@@ -26,9 +26,9 @@ shift-time-changed, and document-uploaded events all work end-to-end. See
 The first time the app starts against an empty database, it seeds one Admin
 account from `DEFAULT_ADMIN_EMAIL`/`DEFAULT_ADMIN_PASSWORD` (falling back to
 `admin@example.com` / `ChangeMe123!` if you didn't set them). **Log in and
-change that password immediately** — from the Users page, use "Forgot
-password?" on the login screen, since there's no in-app change-password
-form yet.
+change that password immediately** — from the My Account page
+(`/account`), or "Forgot password?" on the login screen if you'd rather do
+it logged out.
 
 From there: Users page → Invite → enter an email (and, optionally, a phone
 number if you want the invite sent by text too, via Twilio) → the invitee
@@ -109,6 +109,19 @@ An Admin can set a patient name (`GET`/`PUT /api/settings`, GET open to any
 authenticated user, PUT Admin-only) — shown on the Home page and included
 in invitation emails/texts when set. Left blank, nothing changes from
 today's generic wording/layout.
+
+## My Account
+
+Any logged-in user can manage their own account (`/account` in the
+frontend): update their phone number directly, change their password
+(`POST /api/users/me/change-password`, requires the current password), or
+change their email. Email changes require confirming the new address
+first — request a change (`POST /api/users/me/request-email-change`) and
+a confirmation link is sent to the *new* address; the account's email
+doesn't actually change until that link is clicked
+(`POST /api/users/confirm-email-change`, no login required). This mirrors
+how invites and password resets already work in this app, rather than
+changing something as sensitive as login email immediately on request.
 
 ## Tech stack
 

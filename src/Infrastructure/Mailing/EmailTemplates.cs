@@ -13,4 +13,10 @@ public static class EmailTemplates
         <p><a href="{link}">Click here to reset your password</a></p>
         <p>If you didn't request this, you can ignore this email — your password won't change.</p>
         """;
+
+    public static string EmailChangeConfirmationEmail(string link) => $"""
+        <p>Confirm your new email address for Care Coordination.</p>
+        <p><a href="{link}">Click here to confirm this email change</a></p>
+        <p>If you didn't request this, you can ignore this email — your email won't change.</p>
+        """;
 }

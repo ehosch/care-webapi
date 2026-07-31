@@ -19,4 +19,12 @@ public interface IUserService
     Task ResetPasswordAsync(string email, string token, string newPassword, CancellationToken cancellationToken);
 
     Task UpdatePhoneNumberAsync(string userId, string? phoneNumber, CancellationToken cancellationToken);
+
+    Task<UserDto> GetUserAsync(string userId, CancellationToken cancellationToken);
+
+    Task ChangePasswordAsync(string userId, string currentPassword, string newPassword, CancellationToken cancellationToken);
+
+    Task RequestEmailChangeAsync(string userId, string newEmail, string origin, CancellationToken cancellationToken);
+
+    Task ConfirmEmailChangeAsync(string userId, string newEmail, string token, CancellationToken cancellationToken);
 }

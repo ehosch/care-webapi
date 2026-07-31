@@ -22,3 +22,15 @@ public record ResetPasswordRequest(
     [Required(ErrorMessage = "Email is required."), EmailAddress(ErrorMessage = "Enter a valid email address.")] string Email,
     [Required] string Token,
     [Required(ErrorMessage = "Password is required."), MinLength(8, ErrorMessage = "Password must be at least 8 characters.")] string NewPassword);
+
+public record ChangePasswordRequest(
+    [Required(ErrorMessage = "Current password is required.")] string CurrentPassword,
+    [Required(ErrorMessage = "New password is required."), MinLength(8, ErrorMessage = "Password must be at least 8 characters.")] string NewPassword);
+
+public record RequestEmailChangeRequest(
+    [Required(ErrorMessage = "Email is required."), EmailAddress(ErrorMessage = "Enter a valid email address.")] string NewEmail);
+
+public record ConfirmEmailChangeRequest(
+    [Required] string UserId,
+    [Required(ErrorMessage = "Email is required."), EmailAddress(ErrorMessage = "Enter a valid email address.")] string NewEmail,
+    [Required] string Token);
