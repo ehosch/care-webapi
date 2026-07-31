@@ -211,14 +211,17 @@ internal class UserService : IUserService
         string link = $"{origin.TrimEnd('/')}/register?token={Uri.EscapeDataString(token)}";
         _logger.LogInformation("Invite link for {Email}: {Link}", user.Email, link);
 
-        string body = EmailTemplates.InviteEmail(link);
+        string? patientName = (await _db.AppSettings.FirstOrDefaultAsync(cancellationToken))?.PatientName;
+
+        string body = EmailTemplates.InviteEmail(link, patientName);
         _jobClient.Enqueue<IMailService>(m => m.SendAsync(
             new MailRequest(new List<string> { user.Email! }, "You've been invited to Care Coordination", body),
             CancellationToken.None));
 
         if (!string.IsNullOrEmpty(user.PhoneNumber))
         {
-            string smsBody = $"You've been invited to Care Coordination. Set up your account: {link}";
+            string forWhom = string.IsNullOrWhiteSpace(patientName) ? "" : $" for {patientName}";
+            string smsBody = $"You've been invited to help coordinate care{forWhom}. Set up your account: {link}";
             _jobClient.Enqueue<ISmsService>(s => s.SendAsync(
                 new SmsRequest(user.PhoneNumber, smsBody),
                 CancellationToken.None));

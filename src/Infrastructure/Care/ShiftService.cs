@@ -346,6 +346,8 @@ internal class ShiftService : IShiftService
                     r.Id,
                     r.ShiftId,
                     shift.Date,
+                    shift.StartTime,
+                    shift.EndTime,
                     r.RequestedByUserId,
                     names.GetValueOrDefault(r.RequestedByUserId, "Unknown"),
                     r.Reason,

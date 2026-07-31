@@ -100,7 +100,15 @@ or by an Admin from the Users page at any time. A user with no phone number
 just gets the email half; nothing errors or blocks. SMTP (`mail.json`) and
 Twilio (`sms.json`) are both optional — if either is unconfigured, that
 channel is skipped and logged, same graceful-degradation behavior Phase 1's
-email already had.
+email already had. The replacement-requested notification includes a link
+back to the Replacement Requests page.
+
+## Settings
+
+An Admin can set a patient name (`GET`/`PUT /api/settings`, GET open to any
+authenticated user, PUT Admin-only) — shown on the Home page and included
+in invitation emails/texts when set. Left blank, nothing changes from
+today's generic wording/layout.
 
 ## Tech stack
 

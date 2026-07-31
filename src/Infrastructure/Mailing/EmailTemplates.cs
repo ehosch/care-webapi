@@ -2,8 +2,8 @@ namespace Care.WebApi.Infrastructure.Mailing;
 
 public static class EmailTemplates
 {
-    public static string InviteEmail(string link) => $"""
-        <p>You've been invited to join Care Coordination.</p>
+    public static string InviteEmail(string link, string? patientName) => $"""
+        <p>You've been invited to join Care Coordination{(string.IsNullOrWhiteSpace(patientName) ? "" : $", helping coordinate care for {patientName}")}.</p>
         <p><a href="{link}">Click here to accept your invite and set up your account</a></p>
         <p>This link expires in 7 days. If you weren't expecting this, you can ignore this email.</p>
         """;

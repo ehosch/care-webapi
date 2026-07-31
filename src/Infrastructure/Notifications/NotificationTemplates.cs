@@ -9,13 +9,13 @@ public static class NotificationTemplates
     public static string ShiftAssignedSms(DateOnly date, TimeSpan startTime, TimeSpan endTime) =>
         $"Care Coordination: you're now assigned to a shift on {date:ddd, MMM d}, {FormatTime(startTime)}-{FormatTime(endTime)}.";
 
-    public static string ReplacementRequestedEmail(DateOnly date, TimeSpan startTime, TimeSpan endTime, string requestedByName, string? reason) => $"""
+    public static string ReplacementRequestedEmail(DateOnly date, TimeSpan startTime, TimeSpan endTime, string requestedByName, string? reason, string link) => $"""
         <p>{requestedByName} requested a replacement for their shift on {date:dddd, MMMM d}, {FormatTime(startTime)}–{FormatTime(endTime)}{(string.IsNullOrEmpty(reason) ? "" : $" — \"{reason}\"")}.</p>
-        <p>Open the Replacement Requests page if you're able to cover it.</p>
+        <p><a href="{link}">Open the Replacement Requests page</a> if you're able to cover it.</p>
         """;
 
-    public static string ReplacementRequestedSms(DateOnly date, TimeSpan startTime, TimeSpan endTime, string requestedByName) =>
-        $"Care Coordination: {requestedByName} needs a replacement for their shift on {date:ddd, MMM d}, {FormatTime(startTime)}-{FormatTime(endTime)}.";
+    public static string ReplacementRequestedSms(DateOnly date, TimeSpan startTime, TimeSpan endTime, string requestedByName, string link) =>
+        $"Care Coordination: {requestedByName} needs a replacement for their shift on {date:ddd, MMM d}, {FormatTime(startTime)}-{FormatTime(endTime)}. {link}";
 
     public static string ReplacementClaimedEmail(DateOnly date, TimeSpan startTime, TimeSpan endTime, string claimedByName) => $"""
         <p>{claimedByName} has covered your shift on {date:dddd, MMMM d}, {FormatTime(startTime)}–{FormatTime(endTime)}. You're released from it.</p>

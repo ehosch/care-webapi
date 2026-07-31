@@ -1,3 +1,4 @@
+using Care.WebApi.Domain.Common;
 using Care.WebApi.Infrastructure.Identity;
 using Care.WebApi.Infrastructure.Persistence.Context;
 using Microsoft.AspNetCore.Identity;
@@ -60,6 +61,13 @@ public static class ApplicationDbInitializer
             {
                 logger.LogError("Failed to seed default admin user: {Errors}", string.Join(", ", result.Errors.Select(e => e.Description)));
             }
+        }
+
+        if (!await context.AppSettings.AnyAsync(cancellationToken))
+        {
+            context.AppSettings.Add(new AppSettings());
+            await context.SaveChangesAsync(cancellationToken);
+            logger.LogInformation("Seeded default app settings row.");
         }
     }
 }

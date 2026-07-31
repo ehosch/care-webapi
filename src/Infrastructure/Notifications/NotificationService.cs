@@ -5,6 +5,7 @@ using Care.WebApi.Infrastructure.Identity;
 using Hangfire;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 
 namespace Care.WebApi.Infrastructure.Notifications;
 
@@ -12,11 +13,16 @@ internal class NotificationService : INotificationService
 {
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly IBackgroundJobClient _jobClient;
+    private readonly string? _frontendBaseUrl;
 
-    public NotificationService(UserManager<ApplicationUser> userManager, IBackgroundJobClient jobClient)
+    public NotificationService(UserManager<ApplicationUser> userManager, IBackgroundJobClient jobClient, IConfiguration config)
     {
         _userManager = userManager;
         _jobClient = jobClient;
+        _frontendBaseUrl = config["CorsSettings:Blazor"]
+            ?.Split(';', StringSplitOptions.RemoveEmptyEntries)
+            .FirstOrDefault()
+            ?.TrimEnd('/');
     }
 
     public async Task NotifyShiftAssignedAsync(string userId, DateOnly date, TimeSpan startTime, TimeSpan endTime, CancellationToken cancellationToken)
@@ -36,14 +42,15 @@ internal class NotificationService : INotificationService
     public async Task NotifyReplacementRequestedAsync(DateOnly date, TimeSpan startTime, TimeSpan endTime, string requestedByUserId, string? reason, CancellationToken cancellationToken)
     {
         string requestedByName = await GetNameAsync(requestedByUserId);
+        string link = $"{_frontendBaseUrl}/replacement-requests";
 
         foreach (var user in await GetOtherActiveUsersAsync(requestedByUserId, cancellationToken))
         {
             EnqueueNotification(
                 user,
                 "Replacement requested",
-                NotificationTemplates.ReplacementRequestedEmail(date, startTime, endTime, requestedByName, reason),
-                NotificationTemplates.ReplacementRequestedSms(date, startTime, endTime, requestedByName));
+                NotificationTemplates.ReplacementRequestedEmail(date, startTime, endTime, requestedByName, reason, link),
+                NotificationTemplates.ReplacementRequestedSms(date, startTime, endTime, requestedByName, link));
         }
     }
 

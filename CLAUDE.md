@@ -439,6 +439,43 @@ someone claims or is assigned a contiguous run of blocks.
   the `Shifts` table before deploying this to a database with real data.
   `Down()` only restores schema shape; it can't resurrect deleted rows.
 
+## Known gotchas from Phase 10 (Patient Settings, Notification Links, Times)
+
+Four independent fixes from live testing after Phase 9 shipped.
+
+- **New `AppSettings` single-row table** (`Core/Domain/Common/AppSettings.cs`,
+  `Infrastructure/Common/AppSettingsService.cs`) holds just one field,
+  `PatientName`, deliberately not a generic key-value settings store — add
+  more dedicated fields here if more settings show up, don't build a
+  generic framework speculatively. `ApplicationDbInitializer` seeds exactly
+  one empty row if the table is empty; `AppSettingsService` always reads/
+  writes the first (only) row via `FirstOrDefaultAsync`, no "well-known ID"
+  needed. `GET /api/settings` has no role restriction (the Home page needs
+  it as any authenticated user); `PUT` is Admin-only.
+- **Invite email/SMS pull the patient name directly via `_db.AppSettings`**
+  in `UserService.CreateAndSendInviteAsync`, not through
+  `IAppSettingsService` — `UserService` already has `ApplicationDbContext`
+  injected, so a second service dependency would be pure ceremony for a
+  single-row read. Falls back to today's generic wording when unset.
+- **`NotificationService` needed a frontend base URL for the first time**
+  (the replacement-requested link) — it runs via Hangfire background jobs,
+  so there's no HTTP request/`Origin` header available like
+  `UsersController`'s invite/reset flows use. Reused the already-required
+  `CorsSettings:Blazor` config value (semicolon-separated allowed origins)
+  instead of adding a new config key — takes the first entry. Injected
+  `IConfiguration` into `NotificationService`'s constructor for this.
+- **`ReplacementRequestDto` gained `StartTime`/`EndTime`** — these were
+  dropped entirely (not just `ShiftType`) when Phase 9 removed the fixed
+  shift model, leaving the Replacement Requests page showing only a date
+  with no indication of how long the shift actually is.  `GetReplacementQueueAsync`
+  already loads each request's associated `Shift`, so this was just adding
+  two fields to the existing DTO construction, no new query.
+- **Document preview (PDF/image inline instead of forced download) needed
+  zero backend changes** — `DocumentDto.ContentType` and the raw bytes
+  already existed; the frontend fully controls download-vs-inline-view via
+  its own Blob/JS-interop handling, regardless of what `Content-Disposition`
+  the `File()` result sets. See care-wasm's `CLAUDE.md` for the actual fix.
+
 ## Data model
 
 See `../CLAUDE_CARE.md` for the full spec (data model, phased build plan,
@@ -474,3 +511,7 @@ neighbor it grows into, let a neighbor reclaim space it shrinks away from)
 with a notification rather than the old gap-confirmation flow. See Phase
 9's gotchas section above for the full detail — this superseded most of
 Phase 3/4's original framing and all of Phase 8's gap-indicator work.
+Phase 10 (four independent fixes from live testing) added the single-row
+`AppSettings`/`PatientName` concept and its `SettingsController`, a
+replacement-requests link on the replacement-requested notification, and
+`StartTime`/`EndTime` on `ReplacementRequestDto`.
