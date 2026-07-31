@@ -7,9 +7,12 @@ public record CreateInviteRequest([Required, EmailAddress] string Email);
 public record RegisterRequest(
     [Required] string Token,
     [Required] string Name,
-    [Required, MinLength(8)] string Password);
+    [Required, MinLength(8)] string Password,
+    string? PhoneNumber);
 
 public record ChangeUserRoleRequest([Required] string Role);
+
+public record UpdatePhoneNumberRequest(string? PhoneNumber);
 
 public record ForgotPasswordRequest([Required, EmailAddress] string Email);
 

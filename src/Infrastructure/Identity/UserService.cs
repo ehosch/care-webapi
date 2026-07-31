@@ -41,7 +41,7 @@ internal class UserService : IUserService
         foreach (var user in users)
         {
             string role = (await _userManager.GetRolesAsync(user)).FirstOrDefault() ?? "Member";
-            result.Add(new UserDto(user.Id, user.Name, user.Email!, role, user.Status.ToString(), user.InvitedAt, user.JoinedAt));
+            result.Add(new UserDto(user.Id, user.Name, user.Email!, role, user.Status.ToString(), user.InvitedAt, user.JoinedAt, user.PhoneNumber));
         }
 
         return result.OrderBy(u => u.Name).ToList();
@@ -121,7 +121,7 @@ internal class UserService : IUserService
         await _userManager.AddToRoleAsync(user, role);
     }
 
-    public async Task RegisterAsync(string token, string name, string password, CancellationToken cancellationToken)
+    public async Task RegisterAsync(string token, string name, string password, string? phoneNumber, CancellationToken cancellationToken)
     {
         var invite = await _db.Invites.FirstOrDefaultAsync(i => i.Token == token, cancellationToken)
             ?? throw new NotFoundException("Invite not found.");
@@ -141,12 +141,20 @@ internal class UserService : IUserService
         }
 
         user.Name = name;
+        user.PhoneNumber = phoneNumber;
         user.Status = UserStatus.Active;
         user.JoinedAt = DateTime.UtcNow;
         await _userManager.UpdateAsync(user);
 
         invite.UsedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task UpdatePhoneNumberAsync(string userId, string? phoneNumber, CancellationToken cancellationToken)
+    {
+        var user = await _userManager.FindByIdAsync(userId) ?? throw new NotFoundException("User not found.");
+        user.PhoneNumber = phoneNumber;
+        await _userManager.UpdateAsync(user);
     }
 
     public async Task ForgotPasswordAsync(string email, string origin, CancellationToken cancellationToken)

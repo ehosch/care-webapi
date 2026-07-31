@@ -12,9 +12,11 @@ public interface IUserService
 
     Task ChangeRoleAsync(string userId, string role, string requestingUserId, CancellationToken cancellationToken);
 
-    Task RegisterAsync(string token, string name, string password, CancellationToken cancellationToken);
+    Task RegisterAsync(string token, string name, string password, string? phoneNumber, CancellationToken cancellationToken);
 
     Task ForgotPasswordAsync(string email, string origin, CancellationToken cancellationToken);
 
     Task ResetPasswordAsync(string email, string token, string newPassword, CancellationToken cancellationToken);
+
+    Task UpdatePhoneNumberAsync(string userId, string? phoneNumber, CancellationToken cancellationToken);
 }

@@ -1,5 +1,6 @@
 using Care.WebApi.Application.Care;
 using Care.WebApi.Application.Common.Exceptions;
+using Care.WebApi.Application.Common.Notifications;
 using Care.WebApi.Domain.Care;
 using Care.WebApi.Infrastructure.Identity;
 using Care.WebApi.Infrastructure.Persistence.Context;
@@ -12,11 +13,13 @@ internal class ShiftService : IShiftService
 {
     private readonly ApplicationDbContext _db;
     private readonly UserManager<ApplicationUser> _userManager;
+    private readonly INotificationService _notificationService;
 
-    public ShiftService(ApplicationDbContext db, UserManager<ApplicationUser> userManager)
+    public ShiftService(ApplicationDbContext db, UserManager<ApplicationUser> userManager, INotificationService notificationService)
     {
         _db = db;
         _userManager = userManager;
+        _notificationService = notificationService;
     }
 
     public async Task<List<ShiftDto>> GetShiftsAsync(DateOnly weekStart, CancellationToken cancellationToken)
@@ -90,6 +93,11 @@ internal class ShiftService : IShiftService
 
         shift.LastModifiedOn = DateTime.UtcNow;
         await _db.SaveChangesAsync(cancellationToken);
+
+        if (userId is not null)
+        {
+            await _notificationService.NotifyShiftAssignedAsync(userId, shift.Date, shift.ShiftType, cancellationToken);
+        }
     }
 
     public async Task ClaimShiftAsync(Guid shiftId, string userId, CancellationToken cancellationToken)
@@ -106,6 +114,8 @@ internal class ShiftService : IShiftService
         shift.Status = ShiftStatus.Assigned;
         shift.LastModifiedOn = DateTime.UtcNow;
         await _db.SaveChangesAsync(cancellationToken);
+
+        await _notificationService.NotifyShiftAssignedAsync(userId, shift.Date, shift.ShiftType, cancellationToken);
     }
 
     public async Task CreateReplacementRequestAsync(Guid shiftId, string requestedByUserId, string? reason, CancellationToken cancellationToken)
@@ -134,6 +144,8 @@ internal class ShiftService : IShiftService
         shift.Status = ShiftStatus.ReplacementRequested;
         shift.LastModifiedOn = DateTime.UtcNow;
         await _db.SaveChangesAsync(cancellationToken);
+
+        await _notificationService.NotifyReplacementRequestedAsync(shift.Date, shift.ShiftType, requestedByUserId, reason, cancellationToken);
     }
 
     public async Task CancelReplacementRequestAsync(Guid requestId, string requestingUserId, CancellationToken cancellationToken)
@@ -190,6 +202,8 @@ internal class ShiftService : IShiftService
         shift.LastModifiedOn = DateTime.UtcNow;
 
         await _db.SaveChangesAsync(cancellationToken);
+
+        await _notificationService.NotifyReplacementClaimedAsync(request.RequestedByUserId, claimingUserId, shift.Date, shift.ShiftType, cancellationToken);
     }
 
     public async Task<List<ReplacementRequestDto>> GetReplacementQueueAsync(CancellationToken cancellationToken)

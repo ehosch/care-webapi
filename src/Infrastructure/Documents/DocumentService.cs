@@ -1,5 +1,6 @@
 using Care.WebApi.Application.Common.Exceptions;
 using Care.WebApi.Application.Common.FileStorage;
+using Care.WebApi.Application.Common.Notifications;
 using Care.WebApi.Application.Documents;
 using Care.WebApi.Domain.Documents;
 using Care.WebApi.Infrastructure.Identity;
@@ -15,17 +16,20 @@ internal class DocumentService : IDocumentService
     private readonly ApplicationDbContext _db;
     private readonly IDocumentStorageService _storage;
     private readonly UserManager<ApplicationUser> _userManager;
+    private readonly INotificationService _notificationService;
     private readonly ILogger<DocumentService> _logger;
 
     public DocumentService(
         ApplicationDbContext db,
         IDocumentStorageService storage,
         UserManager<ApplicationUser> userManager,
+        INotificationService notificationService,
         ILogger<DocumentService> logger)
     {
         _db = db;
         _storage = storage;
         _userManager = userManager;
+        _notificationService = notificationService;
         _logger = logger;
     }
 
@@ -92,6 +96,8 @@ internal class DocumentService : IDocumentService
 
         _db.Documents.Add(document);
         await _db.SaveChangesAsync(cancellationToken);
+
+        await _notificationService.NotifyDocumentUploadedAsync(title, category, uploadedByUserId, cancellationToken);
 
         return document.Id;
     }

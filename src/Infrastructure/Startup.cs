@@ -10,8 +10,10 @@ using Care.WebApi.Infrastructure.FileStorage;
 using Care.WebApi.Infrastructure.Identity;
 using Care.WebApi.Infrastructure.Mailing;
 using Care.WebApi.Infrastructure.Middleware;
+using Care.WebApi.Infrastructure.Notifications;
 using Care.WebApi.Infrastructure.OpenApi;
 using Care.WebApi.Infrastructure.Persistence;
+using Care.WebApi.Infrastructure.Sms;
 using FluentValidation;
 using MediatR;
 using Microsoft.AspNetCore.Builder;
@@ -39,6 +41,8 @@ public static class Startup
             .AddBackgroundJobs(config)
             .AddCorsPolicy(config)
             .AddMailing(config)
+            .AddSms(config)
+            .AddNotifications()
             .AddDocumentStorage(config)
             .AddDocumentServices()
             .AddShiftServices()

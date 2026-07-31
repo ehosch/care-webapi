@@ -11,8 +11,8 @@ frontend: `../care-wasm/`.
 ```
 src/
 ├── Core/Domain/          # Entities: Invite, Document, ShiftTemplate, Shift, ReplacementRequest, ShiftNote
-├── Core/Application/     # Interfaces (ITokenService, IUserService, IMailService, IDocumentService, IDocumentStorageService, IShiftService — shifts + replacement requests + notes) + DTOs — see note below
-├── Infrastructure/       # EF Core (MySQL/Pomelo), ASP.NET Identity, JWT auth, Hangfire, Mailing, Serilog, NSwag
+├── Core/Application/     # Interfaces (ITokenService, IUserService, IMailService, ISmsService, INotificationService, IDocumentService, IDocumentStorageService, IShiftService — shifts + replacement requests + notes) + DTOs — see note below
+├── Infrastructure/       # EF Core (MySQL/Pomelo), ASP.NET Identity, JWT auth, Hangfire, Mailing, Sms, Notifications, Serilog, NSwag
 ├── Host/                 # ASP.NET Core entry point, controllers, Configurations/
 └── Migrators/Migrators.MySQL/  # EF Core migrations project
 ```
@@ -280,6 +280,50 @@ the compose file.
   badge in sync automatically; don't try to cache/store it on `Shift`
   itself, it would just go stale.
 
+## Known gotchas from Phase 6 (Notifications)
+
+- **All the Docker/env plumbing for SMS was already wired since Phase 0** —
+  `docker-compose.yml`, `docker-compose.full.yml`, `.env.example`, and
+  `.env.full.example` already set `SmsSettings__AccountSid`/`AuthToken`/
+  `FromNumber` from `TWILIO_ACCOUNT_SID`/`TWILIO_AUTH_TOKEN`/
+  `TWILIO_FROM_NUMBER`, and the `Twilio` NuGet package was already
+  referenced. Only the application code (`ISmsService`, `INotificationService`,
+  the hook points, phone-number collection) was actually missing — same
+  "scaffold anticipated this phase" pattern every prior phase found for its
+  own domain entities.
+- **`TwilioSmsService` uses `CreateMessageOptions` + `TwilioClient.Init`,
+  not a `CreateAsync(body:, from:, to:, username:, password:)` overload** —
+  the installed `Twilio` 7.8.1 package's `MessageResource.CreateAsync` only
+  has one overload, `CreateAsync(CreateMessageOptions, ITwilioRestClient)`.
+  Verified against the package's own XML docs
+  (`~/.nuget/packages/twilio/7.8.1/lib/net6.0/Twilio.xml`) before writing
+  the service, rather than guessing at a plausible-looking overload.
+- **Both `SmtpMailService` and `TwilioSmsService` catch and log instead of
+  throwing** — a notification failure (bad/missing credentials, network
+  issue) must never block the underlying save (shift assign, replacement
+  request, document upload). `TwilioSmsService` additionally no-ops with an
+  `Information`-level log (not an error) when `SmsSettings` is entirely
+  unconfigured, distinguishing "SMS isn't set up" from "SMS attempt failed."
+- **"Shift assigned" fires on both `AssignShiftAsync` (Admin) and
+  `ClaimShiftAsync` (self-claim)** — the self-claim case is a confirmation
+  to the same user who just acted, not a notification to someone else.
+  Don't skip it thinking it's redundant; it's what the spec's "by admin or
+  self-claim confirmation" phrasing calls for.
+- **Broadcast notifications (`NotifyReplacementRequestedAsync`,
+  `NotifyDocumentUploadedAsync`) exclude the actor via `Id != excludeUserId`
+  on `UserManager.Users`, filtered to `Status == Active`** — invited-but-not-yet-registered
+  users never receive anything, only currently active members.
+- **Invite notifications stay email-only** — a user has no `PhoneNumber` at
+  invite time (the row is created with just an email address before they've
+  ever registered), so there's nothing to broadcast an SMS to. Don't try to
+  add SMS to the invite flow without also solving that ordering problem.
+- **Phone numbers are optional everywhere** — `RegisterRequest.PhoneNumber`
+  has no `[Required]`/format validation (not worth a phone-format library
+  dependency for one optional field in a personal-scale app), and
+  `NotificationService.EnqueueNotification` only enqueues the SMS half when
+  `user.PhoneNumber` is non-empty. A user with no phone just silently gets
+  the email half — never an error.
+
 ## Data model
 
 See `../CLAUDE_CARE.md` for the full spec (data model, phased build plan,
@@ -297,6 +341,10 @@ generation via `ShiftGenerationJob`, admin direct-assign). Phase 4 added
 self-claim of open shifts and a full replacement-request flow (create,
 cancel, claim, queue) via `ReplacementRequestsController` plus additions to
 `IShiftService`/`ShiftsController`. Phase 5 added a per-shift append-only
-note thread (`GetShiftNotesAsync`/`AddShiftNoteAsync`) — every planned
-domain entity from the original spec now has real logic behind it; only
-email/SMS notification dispatch remains unimplemented business logic.
+note thread (`GetShiftNotesAsync`/`AddShiftNoteAsync`). Phase 6 added
+`ISmsService`/`TwilioSmsService` and `INotificationService`/
+`NotificationService`, hooked into all four shift/document trigger points,
+plus phone-number collection (`RegisterRequest.PhoneNumber`,
+`IUserService.UpdatePhoneNumberAsync`) — every planned feature from the
+original spec now has real logic behind it; only deploy polish (Phase 7)
+remains.

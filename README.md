@@ -11,13 +11,13 @@ WebAssembly frontend lives in the companion
 
 ## Status
 
-Phase 0 (scaffold) through Phase 5 (Shift Notes) are done — invites,
+Phase 0 (scaffold) through Phase 6 (Notifications) are done — invites,
 registration, login, roles, forgot/reset password, a document library with
 full version history, a rolling 7-day×3-shift care calendar with admin
 direct-assign, self-claim of open shifts, a replacement-request
-queue/claim flow, and a per-shift note thread all work end-to-end. SMS/email
-*notifications* (as opposed to the account-related emails Phase 1 already
-sends) are not yet implemented. See [Roadmap](#roadmap).
+queue/claim flow, a per-shift note thread, and email/SMS notifications for
+shift-assigned, replacement-requested, replacement-claimed, and
+document-uploaded events all work end-to-end. See [Roadmap](#roadmap).
 
 ## First login
 
@@ -68,6 +68,23 @@ Any active user can also add a note to any shift and read every note left
 on it (`GET`/`POST /api/shifts/{id}/notes`) — a simple append-only comment
 thread, not tied to who's assigned, useful for context like "Mom needs help
 with X today."
+
+## Notifications
+
+Email and SMS notifications fire automatically for: shift assigned (by an
+Admin or a self-claim confirmation), replacement requested (broadcast to
+every other active member — anyone might be able to cover it), replacement
+claimed (to whoever originally requested it), and new document uploaded
+(broadcast to every other active member). Invite emails (Phase 1) are
+unaffected — email only, since there's no phone number on file yet at
+invite time.
+
+SMS requires a phone number on file — optionally set during registration,
+or by an Admin from the Users page at any time. A user with no phone number
+just gets the email half; nothing errors or blocks. SMTP (`mail.json`) and
+Twilio (`sms.json`) are both optional — if either is unconfigured, that
+channel is skipped and logged, same graceful-degradation behavior Phase 1's
+email already had.
 
 ## Tech stack
 
@@ -187,10 +204,9 @@ initialization race, not a misconfiguration.
 
 ## Roadmap
 
-Admin-editable shift-block times (currently fixed defaults) and email/SMS
-*notifications* (shift assigned, replacement claimed, etc. — distinct from
-the account emails Phase 1 already sends) are planned but not yet built.
-See `CLAUDE.md` for current architecture notes.
+Admin-editable shift-block times (currently fixed defaults) and a
+mobile-responsive polish pass on the calendar view are planned but not yet
+built. See `CLAUDE.md` for current architecture notes.
 
 ## License
 

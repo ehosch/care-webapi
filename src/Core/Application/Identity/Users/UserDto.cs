@@ -7,4 +7,5 @@ public record UserDto(
     string Role,
     string Status,
     DateTime InvitedAt,
-    DateTime? JoinedAt);
+    DateTime? JoinedAt,
+    string? PhoneNumber);

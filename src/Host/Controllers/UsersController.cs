@@ -57,12 +57,21 @@ public class UsersController : ControllerBase
         return Ok();
     }
 
+    [HttpPut("{id}/phone-number")]
+    [Authorize(Roles = "Admin")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<IActionResult> UpdatePhoneNumberAsync(string id, UpdatePhoneNumberRequest request, CancellationToken cancellationToken)
+    {
+        await _userService.UpdatePhoneNumberAsync(id, request.PhoneNumber, cancellationToken);
+        return Ok();
+    }
+
     [AllowAnonymous]
     [HttpPost("register")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<IActionResult> RegisterAsync(RegisterRequest request, CancellationToken cancellationToken)
     {
-        await _userService.RegisterAsync(request.Token, request.Name, request.Password, cancellationToken);
+        await _userService.RegisterAsync(request.Token, request.Name, request.Password, request.PhoneNumber, cancellationToken);
         return Ok();
     }
 
