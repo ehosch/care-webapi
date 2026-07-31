@@ -575,6 +575,69 @@ no phone-based login, no changes to `TokenService`/password reset/the
   a null email, matching the existing null-`PhoneNumber` display
   convention on the same table.
 
+## Known gotchas from Phase 15 (Per-trigger notification toggles + shift reminder)
+
+(Phases 13/14 were care-wasm-only — a first-login onboarding wizard and a
+version-number display — see that repo's `CLAUDE.md` for both; nothing
+needed changing here for either.)
+
+- **`AppSettings` gained 14 flat `bool` columns** (`NotifyXEmail`/`NotifyXSms`
+  per trigger), not a generic notification-preferences table — same
+  "add dedicated fields, don't build a generic framework speculatively"
+  precedent as Phase 10's original `PatientName` field. All default
+  `true` (both the C# property initializer and `.HasDefaultValue(true)`
+  in `AppSettingsConfig.cs`) so existing deployments keep today's
+  always-on behavior after the migration lands.
+- **`AppSettingsDto` is used as both the `GET` response shape and the
+  `UpdateSettingsAsync` input shape** — deliberate, since Settings'
+  read/write shapes mirror each other exactly (unlike Users' DTOs),
+  avoiding a 15-parameter service method. `SettingsController` still
+  translates its own Host-layer `UpdateSettingsRequest` into an
+  `AppSettingsDto` before calling the service, keeping the Host request
+  type out of the Application layer.
+- **`NotificationService` now injects `IAppSettingsService`** (a real,
+  justified dependency here, unlike `UserService`'s existing single-field
+  precedent for reading just `PatientName` via raw `_db.AppSettings`) —
+  every `Notify*Async` method fetches the full settings DTO once (outside
+  any per-recipient loop, for the two broadcast triggers) and passes the
+  matching `NotifyXEmail`/`NotifyXSms` booleans into `EnqueueNotification`,
+  which now gates each channel independently instead of always sending
+  both.
+- **New `Shift.ReminderSentAt` (nullable `DateTime`)** is the guard against
+  ever double-sending the new shift-reminder trigger for the same shift.
+- **`Infrastructure/Care/ShiftReminderJob.cs`** runs on a Hangfire
+  recurring schedule (`*/10 * * * *`, registered via `UseShiftReminderJob()`
+  in `Infrastructure/BackgroundJobs/Startup.cs`, called from
+  `Infrastructure/Startup.cs`'s `UseInfrastructure` chain) — no immediate
+  one-off enqueue at startup, unlike the old (deleted) shift-generation
+  job, since there's no "empty calendar on fresh deploy" problem here to
+  solve. **Use a raw cron string (`"*/10 * * * *"`), not
+  `Cron.MinuteInterval(10)`** — the latter is obsolete in the installed
+  Hangfire 1.8.14 and produces a build warning, which this repo doesn't
+  tolerate (0-warnings bar).
+- **Query pattern mirrors `ShiftService.FindOverlappingShiftsAsync`
+  exactly**: narrow by `Date` range in SQL first
+  (`ReminderSentAt == null && Date >= today && Date <= tomorrow`),
+  materialize, then do the precise absolute-time comparison in memory
+  (same `Date.ToDateTime(TimeOnly.FromTimeSpan(StartTime))` construction
+  as `ShiftService.GetAbsoluteStart`) — a shift whose absolute start falls
+  in `(now, now.AddHours(1)]` gets notified and stamped.
+- **Uses `DateTime.Now` (server local time), not `.UtcNow`**, to match how
+  `Shift.Date`/`StartTime` are already treated everywhere else in this
+  codebase as naive local wall-clock values with no timezone conversion
+  anywhere (`GetAbsoluteStart`, `NotificationTemplates.FormatTime`, etc.)
+  — using UTC here would be a new, inconsistent assumption. If this app
+  is ever deployed where the container's system timezone doesn't match
+  the family's real local timezone, every existing shift-time display has
+  the same latent issue, not just this new job.
+- **Verified via a manual Hangfire dashboard "trigger now" call, not the
+  natural 10-minute tick** — the dashboard's trigger endpoint needs
+  specific `Content-Type: application/x-www-form-urlencoded` handling and
+  still 422s on antiforgery validation from a bare `curl`, but the
+  underlying job trigger fires anyway before that later validation step
+  fails, which is enough to confirm behavior without waiting out the full
+  interval.
+
 ## Data model
 
 See `../CLAUDE_CARE.md` for the full spec (data model, phased build plan,
@@ -621,4 +684,7 @@ self-service account management (`GET /api/users/me`,
 their own email/phone/password without Admin involvement. Phase 12 let
 Admins invite by phone number alone (no email required at invite time) —
 the invitee sets their own email on the Register page before their
-account activates; login stays email+password for everyone.
+account activates; login stays email+password for everyone. Phase 15
+added per-trigger email/SMS notification toggles and a new "shift starts
+in about an hour" reminder alert, both admin-configurable from the
+Settings page.

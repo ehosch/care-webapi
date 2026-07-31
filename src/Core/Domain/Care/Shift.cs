@@ -9,4 +9,5 @@ public class Shift : AuditableEntity
     public TimeSpan EndTime { get; set; }
     public string AssignedUserId { get; set; } = string.Empty;
     public ShiftStatus Status { get; set; } = ShiftStatus.Assigned;
+    public DateTime? ReminderSentAt { get; set; }
 }

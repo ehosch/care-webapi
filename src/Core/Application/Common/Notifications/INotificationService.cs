@@ -13,4 +13,6 @@ public interface INotificationService
     Task NotifyShiftRemovedAsync(string affectedUserId, DateOnly date, TimeSpan startTime, TimeSpan endTime, CancellationToken cancellationToken);
 
     Task NotifyShiftBoundaryChangedAsync(string affectedUserId, DateOnly date, TimeSpan newStartTime, TimeSpan newEndTime, CancellationToken cancellationToken);
+
+    Task NotifyShiftReminderAsync(string userId, DateOnly date, TimeSpan startTime, TimeSpan endTime, CancellationToken cancellationToken);
 }

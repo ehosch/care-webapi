@@ -8,6 +8,7 @@ internal static class Startup
     internal static IServiceCollection AddShiftServices(this IServiceCollection services)
     {
         services.AddScoped<IShiftService, ShiftService>();
+        services.AddScoped<IShiftReminderJob, ShiftReminderJob>();
         return services;
     }
 }

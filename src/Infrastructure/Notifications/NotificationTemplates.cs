@@ -45,5 +45,12 @@ public static class NotificationTemplates
     public static string ShiftBoundaryChangedSms(DateOnly date, TimeSpan newStartTime, TimeSpan newEndTime) =>
         $"Care Coordination: your shift on {date:ddd, MMM d} is now {FormatTime(newStartTime)}-{FormatTime(newEndTime)}.";
 
+    public static string ShiftReminderEmail(DateOnly date, TimeSpan startTime, TimeSpan endTime) => $"""
+        <p>Reminder: your shift on {date:dddd, MMMM d} starts in about an hour, {FormatTime(startTime)}–{FormatTime(endTime)}.</p>
+        """;
+
+    public static string ShiftReminderSms(DateOnly date, TimeSpan startTime, TimeSpan endTime) =>
+        $"Care Coordination: reminder — your shift today starts in about an hour, {FormatTime(startTime)}-{FormatTime(endTime)}.";
+
     private static string FormatTime(TimeSpan time) => DateTime.Today.Add(time).ToString("h:mm tt");
 }

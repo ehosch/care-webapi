@@ -1,5 +1,6 @@
 using Care.WebApi.Application.Common.Mailing;
 using Care.WebApi.Application.Common.Notifications;
+using Care.WebApi.Application.Common.Settings;
 using Care.WebApi.Application.Common.Sms;
 using Care.WebApi.Infrastructure.Identity;
 using Hangfire;
@@ -13,12 +14,14 @@ internal class NotificationService : INotificationService
 {
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly IBackgroundJobClient _jobClient;
+    private readonly IAppSettingsService _appSettingsService;
     private readonly string? _frontendBaseUrl;
 
-    public NotificationService(UserManager<ApplicationUser> userManager, IBackgroundJobClient jobClient, IConfiguration config)
+    public NotificationService(UserManager<ApplicationUser> userManager, IBackgroundJobClient jobClient, IAppSettingsService appSettingsService, IConfiguration config)
     {
         _userManager = userManager;
         _jobClient = jobClient;
+        _appSettingsService = appSettingsService;
         _frontendBaseUrl = config["CorsSettings:Blazor"]
             ?.Split(';', StringSplitOptions.RemoveEmptyEntries)
             .FirstOrDefault()
@@ -32,17 +35,21 @@ internal class NotificationService : INotificationService
             return;
         }
 
+        var settings = await _appSettingsService.GetSettingsAsync(cancellationToken);
         EnqueueNotification(
             user,
             "You've been assigned a shift",
             NotificationTemplates.ShiftAssignedEmail(date, startTime, endTime),
-            NotificationTemplates.ShiftAssignedSms(date, startTime, endTime));
+            NotificationTemplates.ShiftAssignedSms(date, startTime, endTime),
+            settings.NotifyShiftAssignedEmail,
+            settings.NotifyShiftAssignedSms);
     }
 
     public async Task NotifyReplacementRequestedAsync(DateOnly date, TimeSpan startTime, TimeSpan endTime, string requestedByUserId, string? reason, CancellationToken cancellationToken)
     {
         string requestedByName = await GetNameAsync(requestedByUserId);
         string link = $"{_frontendBaseUrl}/replacement-requests";
+        var settings = await _appSettingsService.GetSettingsAsync(cancellationToken);
 
         foreach (var user in await GetOtherActiveUsersAsync(requestedByUserId, cancellationToken))
         {
@@ -50,7 +57,9 @@ internal class NotificationService : INotificationService
                 user,
                 "Replacement requested",
                 NotificationTemplates.ReplacementRequestedEmail(date, startTime, endTime, requestedByName, reason, link),
-                NotificationTemplates.ReplacementRequestedSms(date, startTime, endTime, requestedByName, link));
+                NotificationTemplates.ReplacementRequestedSms(date, startTime, endTime, requestedByName, link),
+                settings.NotifyReplacementRequestedEmail,
+                settings.NotifyReplacementRequestedSms);
         }
     }
 
@@ -62,17 +71,21 @@ internal class NotificationService : INotificationService
         }
 
         string claimedByName = await GetNameAsync(claimedByUserId);
+        var settings = await _appSettingsService.GetSettingsAsync(cancellationToken);
 
         EnqueueNotification(
             requester,
             "Your shift replacement was covered",
             NotificationTemplates.ReplacementClaimedEmail(date, startTime, endTime, claimedByName),
-            NotificationTemplates.ReplacementClaimedSms(date, startTime, endTime, claimedByName));
+            NotificationTemplates.ReplacementClaimedSms(date, startTime, endTime, claimedByName),
+            settings.NotifyReplacementClaimedEmail,
+            settings.NotifyReplacementClaimedSms);
     }
 
     public async Task NotifyDocumentUploadedAsync(string title, string category, string uploadedByUserId, CancellationToken cancellationToken)
     {
         string uploadedByName = await GetNameAsync(uploadedByUserId);
+        var settings = await _appSettingsService.GetSettingsAsync(cancellationToken);
 
         foreach (var user in await GetOtherActiveUsersAsync(uploadedByUserId, cancellationToken))
         {
@@ -80,7 +93,9 @@ internal class NotificationService : INotificationService
                 user,
                 "New document uploaded",
                 NotificationTemplates.DocumentUploadedEmail(title, category, uploadedByName),
-                NotificationTemplates.DocumentUploadedSms(title, uploadedByName));
+                NotificationTemplates.DocumentUploadedSms(title, uploadedByName),
+                settings.NotifyDocumentUploadedEmail,
+                settings.NotifyDocumentUploadedSms);
         }
     }
 
@@ -91,11 +106,14 @@ internal class NotificationService : INotificationService
             return;
         }
 
+        var settings = await _appSettingsService.GetSettingsAsync(cancellationToken);
         EnqueueNotification(
             user,
             "Your shift was removed",
             NotificationTemplates.ShiftRemovedEmail(date, startTime, endTime),
-            NotificationTemplates.ShiftRemovedSms(date, startTime, endTime));
+            NotificationTemplates.ShiftRemovedSms(date, startTime, endTime),
+            settings.NotifyShiftRemovedEmail,
+            settings.NotifyShiftRemovedSms);
     }
 
     public async Task NotifyShiftBoundaryChangedAsync(string affectedUserId, DateOnly date, TimeSpan newStartTime, TimeSpan newEndTime, CancellationToken cancellationToken)
@@ -105,20 +123,43 @@ internal class NotificationService : INotificationService
             return;
         }
 
+        var settings = await _appSettingsService.GetSettingsAsync(cancellationToken);
         EnqueueNotification(
             user,
             "Your shift's time changed",
             NotificationTemplates.ShiftBoundaryChangedEmail(date, newStartTime, newEndTime),
-            NotificationTemplates.ShiftBoundaryChangedSms(date, newStartTime, newEndTime));
+            NotificationTemplates.ShiftBoundaryChangedSms(date, newStartTime, newEndTime),
+            settings.NotifyShiftBoundaryChangedEmail,
+            settings.NotifyShiftBoundaryChangedSms);
     }
 
-    private void EnqueueNotification(ApplicationUser user, string subject, string emailBody, string smsBody)
+    public async Task NotifyShiftReminderAsync(string userId, DateOnly date, TimeSpan startTime, TimeSpan endTime, CancellationToken cancellationToken)
     {
-        _jobClient.Enqueue<IMailService>(m => m.SendAsync(
-            new MailRequest(new List<string> { user.Email! }, subject, emailBody),
-            CancellationToken.None));
+        if (await _userManager.FindByIdAsync(userId) is not { } user)
+        {
+            return;
+        }
 
-        if (!string.IsNullOrEmpty(user.PhoneNumber))
+        var settings = await _appSettingsService.GetSettingsAsync(cancellationToken);
+        EnqueueNotification(
+            user,
+            "Your shift starts in about an hour",
+            NotificationTemplates.ShiftReminderEmail(date, startTime, endTime),
+            NotificationTemplates.ShiftReminderSms(date, startTime, endTime),
+            settings.NotifyShiftReminderEmail,
+            settings.NotifyShiftReminderSms);
+    }
+
+    private void EnqueueNotification(ApplicationUser user, string subject, string emailBody, string smsBody, bool emailEnabled, bool smsEnabled)
+    {
+        if (emailEnabled)
+        {
+            _jobClient.Enqueue<IMailService>(m => m.SendAsync(
+                new MailRequest(new List<string> { user.Email! }, subject, emailBody),
+                CancellationToken.None));
+        }
+
+        if (smsEnabled && !string.IsNullOrEmpty(user.PhoneNumber))
         {
             _jobClient.Enqueue<ISmsService>(s => s.SendAsync(
                 new SmsRequest(user.PhoneNumber, smsBody),

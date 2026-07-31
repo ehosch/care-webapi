@@ -1,3 +1,4 @@
+using Care.WebApi.Infrastructure.Care;
 using Hangfire;
 using Hangfire.MySql;
 using HangfireBasicAuthenticationFilter;
@@ -38,5 +39,15 @@ internal static class Startup
         };
 
         return app.UseHangfireDashboard(config["HangfireSettings:Route"], dashboardOptions);
+    }
+
+    internal static IApplicationBuilder UseShiftReminderJob(this IApplicationBuilder app)
+    {
+        RecurringJob.AddOrUpdate<IShiftReminderJob>(
+            "shift-reminders",
+            job => job.RunAsync(CancellationToken.None),
+            "*/10 * * * *");
+
+        return app;
     }
 }

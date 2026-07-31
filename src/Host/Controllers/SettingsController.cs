@@ -24,7 +24,22 @@ public class SettingsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<IActionResult> UpdateSettingsAsync(UpdateSettingsRequest request, CancellationToken cancellationToken)
     {
-        await _appSettingsService.UpdateSettingsAsync(request.PatientName, cancellationToken);
+        await _appSettingsService.UpdateSettingsAsync(new AppSettingsDto(
+            request.PatientName,
+            request.NotifyShiftAssignedEmail,
+            request.NotifyShiftAssignedSms,
+            request.NotifyReplacementRequestedEmail,
+            request.NotifyReplacementRequestedSms,
+            request.NotifyReplacementClaimedEmail,
+            request.NotifyReplacementClaimedSms,
+            request.NotifyDocumentUploadedEmail,
+            request.NotifyDocumentUploadedSms,
+            request.NotifyShiftRemovedEmail,
+            request.NotifyShiftRemovedSms,
+            request.NotifyShiftBoundaryChangedEmail,
+            request.NotifyShiftBoundaryChangedSms,
+            request.NotifyShiftReminderEmail,
+            request.NotifyShiftReminderSms), cancellationToken);
         return Ok();
     }
 }

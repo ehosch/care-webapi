@@ -4,5 +4,5 @@ public interface IAppSettingsService
 {
     Task<AppSettingsDto> GetSettingsAsync(CancellationToken cancellationToken);
 
-    Task UpdateSettingsAsync(string? patientName, CancellationToken cancellationToken);
+    Task UpdateSettingsAsync(AppSettingsDto settings, CancellationToken cancellationToken);
 }
