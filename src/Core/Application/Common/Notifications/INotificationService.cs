@@ -11,4 +11,6 @@ public interface INotificationService
     Task NotifyReplacementClaimedAsync(string requesterUserId, string claimedByUserId, DateOnly date, ShiftType shiftType, CancellationToken cancellationToken);
 
     Task NotifyDocumentUploadedAsync(string title, string category, string uploadedByUserId, CancellationToken cancellationToken);
+
+    Task NotifyScheduleGapAsync(string affectedUserId, DateOnly affectedDate, ShiftType affectedShiftType, int gapMinutes, CancellationToken cancellationToken);
 }

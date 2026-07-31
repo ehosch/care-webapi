@@ -7,3 +7,5 @@ public record AssignShiftRequest(string? UserId);
 public record CreateReplacementRequestRequest(string? Reason);
 
 public record AddShiftNoteRequest([Required][MaxLength(4000)] string Text);
+
+public record AdjustShiftTimesRequest(TimeSpan StartTime, TimeSpan EndTime, bool ConfirmGap);

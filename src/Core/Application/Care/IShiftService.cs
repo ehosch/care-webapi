@@ -19,4 +19,6 @@ public interface IShiftService
     Task<List<ShiftNoteDto>> GetShiftNotesAsync(Guid shiftId, CancellationToken cancellationToken);
 
     Task<ShiftNoteDto> AddShiftNoteAsync(Guid shiftId, string authorUserId, string text, CancellationToken cancellationToken);
+
+    Task<ShiftDto> AdjustShiftTimesAsync(Guid shiftId, TimeSpan startTime, TimeSpan endTime, bool confirmGap, string requestingUserId, bool isAdmin, CancellationToken cancellationToken);
 }

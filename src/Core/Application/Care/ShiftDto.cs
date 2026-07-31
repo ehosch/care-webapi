@@ -13,4 +13,5 @@ public record ShiftDto(
     ShiftStatus Status,
     Guid? PendingReplacementRequestId,
     string? PendingReplacementRequestedByUserId,
-    int NoteCount);
+    int NoteCount,
+    int? GapAfterMinutes);

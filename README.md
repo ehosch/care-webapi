@@ -71,6 +71,18 @@ on it (`GET`/`POST /api/shifts/{id}/notes`) — a simple append-only comment
 thread, not tied to who's assigned, useful for context like "Mom needs help
 with X today."
 
+An Admin, or the member currently assigned to a shift, can nudge that
+shift's start/end time away from its template default
+(`PUT /api/shifts/{id}/times`). If the adjustment would leave a gap next to
+an `Open` neighboring shift, that neighbor's boundary auto-adjusts to close
+it — nobody's assigned there yet, so nothing to warn about. If the
+neighbor is already assigned (or has a pending replacement request), the
+call is rejected with a message naming the gap and the affected shift
+unless you explicitly confirm (`"confirmGap": true`); confirming persists
+the gap and notifies the neighbor's assigned member. The week-grid response
+includes each shift's resulting gap, if any, so the calendar can flag
+uncovered stretches of the day.
+
 ## Notifications
 
 Email and SMS notifications fire automatically for: shift assigned (by an

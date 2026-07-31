@@ -337,6 +337,46 @@ the compose file.
   `user.PhoneNumber` is non-empty. A user with no phone just silently gets
   the email half — never an error.
 
+## Known gotchas from Phase 8 (Friendly Errors + Adjustable Shift Times)
+
+- **NSwag's generated `ApiException.Message` concatenates the raw HTTP
+  response body** (`message + "\n\nStatus: ...\nResponse: \n" + rawJson`).
+  care-wasm was displaying this directly to users, including
+  ASP.NET Core's own `ValidationProblemDetails` JSON and a `traceId`. Fixed
+  entirely on the care-wasm side (`ApiErrorHelper`, see that repo's
+  `CLAUDE.md`) — this repo's contribution was only adding explicit,
+  friendlier `ErrorMessage` text to the most user-facing DataAnnotations
+  (`Password` `MinLength(8)`, `EmailAddress` checks in
+  `Core/Application/Identity/Users/Requests.cs`) so the underlying message
+  itself reads naturally once surfaced correctly.
+- **`ShiftDto.GapAfterMinutes`** is computed in `GetShiftsAsync` by zipping
+  each shift with the next chronologically-ordered one (`Day → Evening →
+  Overnight → next date's Day`) and diffing absolute `DateTime`s (not raw
+  `TimeSpan`s — the Overnight shift's end wraps past midnight, so absolute
+  start/end must be computed via `date.ToDateTime(...)` with an
+  `end <= start ? end.AddDays(1) : end` guard, same convention used
+  everywhere else this app crosses midnight). Null at the edge of the
+  requested week — the boundary into the next/previous week isn't loaded,
+  a known display-only limitation, not worth an extra fetch.
+- **`AdjustShiftTimesAsync` (`PUT /api/shifts/{id}/times`) enforces
+  admin-or-assignee, not just Admin** — unlike `AssignShiftAsync`, this
+  endpoint has no `[Authorize(Roles = "Admin")]` on the controller; the
+  service itself throws `ForbiddenException` unless `isAdmin ||
+  shift.AssignedUserId == requestingUserId`, so an assigned member can
+  adjust their own shift's times without admin rights.
+- **Adjusting a shift's time against a neighboring shift branches on that
+  neighbor's `Status`, not a single always-conflict/always-auto-adjust
+  rule**: if the neighbor is `Open`, its touching boundary is silently
+  auto-adjusted to close the gap (nobody's assigned yet, nothing to warn).
+  If the neighbor is `Assigned`/`ReplacementRequested`, the call throws
+  `ConflictException` (409) naming the gap length and the neighbor's shift
+  unless the request sets `ConfirmGap: true` — the client is expected to
+  show that message and retry with confirmation, not treat 409 as a
+  dead-end error. On confirm, the gap is persisted (not silently closed)
+  and `INotificationService.NotifyScheduleGapAsync` fires to the
+  neighbor's assigned user, mirroring the existing Phase 6 notification
+  triggers.
+
 ## Data model
 
 See `../CLAUDE_CARE.md` for the full spec (data model, phased build plan,
@@ -360,5 +400,10 @@ note thread (`GetShiftNotesAsync`/`AddShiftNoteAsync`). Phase 6 added
 plus phone-number collection (`RegisterRequest.PhoneNumber`,
 `IUserService.UpdatePhoneNumberAsync`). Phase 7 fixed the calendar's
 mobile-overflow gotcha (see care-wasm's `CLAUDE.md`) — every planned
-feature and fix from the original spec is done; only the actual homelab
-deployment remains, which is an operational step, not a code change.
+feature and fix from the original spec is done. Phase 8 (post-go-live,
+after real production use) added friendlier validation error text,
+`ShiftDto.GapAfterMinutes`, and `IShiftService.AdjustShiftTimesAsync` (an
+admin-or-assignee endpoint for nudging a shift's start/end time, with
+auto-adjust-if-Open-neighbor / confirm-then-notify-if-Assigned-neighbor
+gap handling) to support care-wasm's calendar color-coding, time display,
+and gap-indicator UI.

@@ -78,6 +78,20 @@ internal class NotificationService : INotificationService
         }
     }
 
+    public async Task NotifyScheduleGapAsync(string affectedUserId, DateOnly affectedDate, ShiftType affectedShiftType, int gapMinutes, CancellationToken cancellationToken)
+    {
+        if (await _userManager.FindByIdAsync(affectedUserId) is not { } user)
+        {
+            return;
+        }
+
+        EnqueueNotification(
+            user,
+            "A schedule gap opened up near your shift",
+            NotificationTemplates.ScheduleGapEmail(affectedDate, affectedShiftType, gapMinutes),
+            NotificationTemplates.ScheduleGapSms(affectedDate, affectedShiftType, gapMinutes));
+    }
+
     private void EnqueueNotification(ApplicationUser user, string subject, string emailBody, string smsBody)
     {
         _jobClient.Enqueue<IMailService>(m => m.SendAsync(

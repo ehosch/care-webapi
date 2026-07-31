@@ -32,4 +32,11 @@ public static class NotificationTemplates
 
     public static string DocumentUploadedSms(string title, string uploadedByName) =>
         $"Care Coordination: {uploadedByName} uploaded a new document — \"{title}\".";
+
+    public static string ScheduleGapEmail(DateOnly date, ShiftType shiftType, int gapMinutes) => $"""
+        <p>A schedule change has left a {gapMinutes}-minute gap next to your {shiftType} shift on {date:dddd, MMMM d}. You may want to coordinate coverage for that window.</p>
+        """;
+
+    public static string ScheduleGapSms(DateOnly date, ShiftType shiftType, int gapMinutes) =>
+        $"Care Coordination: a {gapMinutes}-min gap opened up next to your {shiftType} shift on {date:ddd, MMM d}.";
 }

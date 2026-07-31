@@ -53,5 +53,9 @@ public class ShiftsController : ControllerBase
     public async Task<ActionResult<ShiftNoteDto>> AddNoteAsync(Guid id, AddShiftNoteRequest request, CancellationToken cancellationToken) =>
         await _shiftService.AddShiftNoteAsync(id, RequestingUserId, request.Text, cancellationToken);
 
+    [HttpPut("{id}/times")]
+    public async Task<ActionResult<ShiftDto>> AdjustTimesAsync(Guid id, AdjustShiftTimesRequest request, CancellationToken cancellationToken) =>
+        await _shiftService.AdjustShiftTimesAsync(id, request.StartTime, request.EndTime, request.ConfirmGap, RequestingUserId, User.IsInRole("Admin"), cancellationToken);
+
     private string RequestingUserId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 }
