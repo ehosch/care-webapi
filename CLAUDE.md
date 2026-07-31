@@ -345,6 +345,7 @@ note thread (`GetShiftNotesAsync`/`AddShiftNoteAsync`). Phase 6 added
 `ISmsService`/`TwilioSmsService` and `INotificationService`/
 `NotificationService`, hooked into all four shift/document trigger points,
 plus phone-number collection (`RegisterRequest.PhoneNumber`,
-`IUserService.UpdatePhoneNumberAsync`) — every planned feature from the
-original spec now has real logic behind it; only deploy polish (Phase 7)
-remains.
+`IUserService.UpdatePhoneNumberAsync`). Phase 7 fixed the calendar's
+mobile-overflow gotcha (see care-wasm's `CLAUDE.md`) — every planned
+feature and fix from the original spec is done; only the actual homelab
+deployment remains, which is an operational step, not a code change.

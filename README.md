@@ -11,13 +11,13 @@ WebAssembly frontend lives in the companion
 
 ## Status
 
-Phase 0 (scaffold) through Phase 6 (Notifications) are done — invites,
-registration, login, roles, forgot/reset password, a document library with
-full version history, a rolling 7-day×3-shift care calendar with admin
-direct-assign, self-claim of open shifts, a replacement-request
-queue/claim flow, a per-shift note thread, and email/SMS notifications for
-shift-assigned, replacement-requested, replacement-claimed, and
-document-uploaded events all work end-to-end. See [Roadmap](#roadmap).
+All phases in the original build plan are done — invites, registration,
+login, roles, forgot/reset password, a document library with full version
+history, a rolling 7-day×3-shift care calendar with admin direct-assign,
+self-claim of open shifts, a replacement-request queue/claim flow, a
+per-shift note thread, and email/SMS notifications for shift-assigned,
+replacement-requested, replacement-claimed, and document-uploaded events
+all work end-to-end. See [Roadmap](#roadmap).
 
 ## First login
 
@@ -204,9 +204,10 @@ initialization race, not a misconfiguration.
 
 ## Roadmap
 
-Admin-editable shift-block times (currently fixed defaults) and a
-mobile-responsive polish pass on the calendar view are planned but not yet
-built. See `CLAUDE.md` for current architecture notes.
+Every feature in the original spec is built. Admin-editable shift-block
+times (currently fixed defaults) is the only enhancement still on the
+table, and isn't currently planned. See `CLAUDE.md` for current
+architecture notes.
 
 ## License
 
