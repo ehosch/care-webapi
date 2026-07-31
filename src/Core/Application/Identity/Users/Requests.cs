@@ -2,7 +2,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace Care.WebApi.Application.Identity.Users;
 
-public record CreateInviteRequest([Required, EmailAddress] string Email);
+public record CreateInviteRequest([Required, EmailAddress] string Email, string? PhoneNumber);
 
 public record RegisterRequest(
     [Required] string Token,

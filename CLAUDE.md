@@ -313,10 +313,23 @@ the compose file.
   `NotifyDocumentUploadedAsync`) exclude the actor via `Id != excludeUserId`
   on `UserManager.Users`, filtered to `Status == Active`** — invited-but-not-yet-registered
   users never receive anything, only currently active members.
-- **Invite notifications stay email-only** — a user has no `PhoneNumber` at
-  invite time (the row is created with just an email address before they've
-  ever registered), so there's nothing to broadcast an SMS to. Don't try to
-  add SMS to the invite flow without also solving that ordering problem.
+- **Invites can now go by SMS too, if the Admin supplies a phone number at
+  invite time** — `CreateInviteRequest.PhoneNumber` sets
+  `ApplicationUser.PhoneNumber` immediately when the invite row is created
+  (before the invitee has ever registered), so `CreateAndSendInviteAsync`
+  has something to send an SMS to right away. If no phone number is
+  supplied at invite time, the invite stays email-only — there's nothing to
+  send to yet. This goes through `IBackgroundJobClient`/`ISmsService`
+  directly in `UserService.cs`, the same way the invite/reset emails do —
+  *not* through `INotificationService`, since invites predate that Phase 6
+  abstraction and aren't one of its four shift/document trigger points.
+  `ResendInviteAsync` automatically gets SMS too once a phone number is on
+  file, since it calls the same shared `CreateAndSendInviteAsync` helper.
+- **`RegisterAsync` only overwrites `PhoneNumber` if the registrant
+  actually supplies one** (`if (!string.IsNullOrWhiteSpace(phoneNumber))`)
+  — fixed after finding it would otherwise silently clear a phone number
+  an Admin already set at invite time, if the invitee leaves the Register
+  page's optional phone field blank.
 - **Phone numbers are optional everywhere** — `RegisterRequest.PhoneNumber`
   has no `[Required]`/format validation (not worth a phone-format library
   dependency for one optional field in a personal-scale app), and

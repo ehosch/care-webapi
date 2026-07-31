@@ -28,11 +28,13 @@ change that password immediately** — from the Users page, use "Forgot
 password?" on the login screen, since there's no in-app change-password
 form yet.
 
-From there: Users page → Invite → enter an email → the invitee gets an email
-with a link to `/register?token=...` to set their name and password. **If you
-haven't configured a working mail provider yet, the invite/reset link is also
-logged at `Information` level** — `docker logs care-webapi` (or the console,
-for `dotnet run`) — so onboarding isn't blocked on getting SMTP right first.
+From there: Users page → Invite → enter an email (and, optionally, a phone
+number if you want the invite sent by text too, via Twilio) → the invitee
+gets a link to `/register?token=...` to set their name and password. **If
+you haven't configured a working mail provider yet, the invite/reset link
+is also logged at `Information` level** — `docker logs care-webapi` (or the
+console, for `dotnet run`) — so onboarding isn't blocked on getting SMTP
+right first.
 
 ## Documents
 

@@ -4,7 +4,7 @@ public interface IUserService
 {
     Task<List<UserDto>> GetUsersAsync(CancellationToken cancellationToken);
 
-    Task CreateInviteAsync(string email, string invitedByUserId, string origin, CancellationToken cancellationToken);
+    Task CreateInviteAsync(string email, string? phoneNumber, string invitedByUserId, string origin, CancellationToken cancellationToken);
 
     Task ResendInviteAsync(string userId, string requestingUserId, string origin, CancellationToken cancellationToken);
 

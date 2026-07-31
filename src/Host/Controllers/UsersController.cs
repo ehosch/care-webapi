@@ -26,7 +26,7 @@ public class UsersController : ControllerBase
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<IActionResult> InviteAsync(CreateInviteRequest request, CancellationToken cancellationToken)
     {
-        await _userService.CreateInviteAsync(request.Email, RequestingUserId, Origin, cancellationToken);
+        await _userService.CreateInviteAsync(request.Email, request.PhoneNumber, RequestingUserId, Origin, cancellationToken);
         return Ok();
     }
 

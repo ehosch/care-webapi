@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using Care.WebApi.Application.Common.Exceptions;
 using Care.WebApi.Application.Common.Mailing;
+using Care.WebApi.Application.Common.Sms;
 using Care.WebApi.Application.Identity.Users;
 using Care.WebApi.Domain.Identity;
 using Care.WebApi.Infrastructure.Mailing;
@@ -47,7 +48,7 @@ internal class UserService : IUserService
         return result.OrderBy(u => u.Name).ToList();
     }
 
-    public async Task CreateInviteAsync(string email, string invitedByUserId, string origin, CancellationToken cancellationToken)
+    public async Task CreateInviteAsync(string email, string? phoneNumber, string invitedByUserId, string origin, CancellationToken cancellationToken)
     {
         email = email.Trim().ToLowerInvariant();
 
@@ -61,6 +62,7 @@ internal class UserService : IUserService
             UserName = email,
             Email = email,
             Name = email,
+            PhoneNumber = string.IsNullOrWhiteSpace(phoneNumber) ? null : phoneNumber,
             Status = UserStatus.Invited,
             InvitedAt = DateTime.UtcNow,
             EmailConfirmed = true
@@ -141,7 +143,11 @@ internal class UserService : IUserService
         }
 
         user.Name = name;
-        user.PhoneNumber = phoneNumber;
+        if (!string.IsNullOrWhiteSpace(phoneNumber))
+        {
+            user.PhoneNumber = phoneNumber;
+        }
+
         user.Status = UserStatus.Active;
         user.JoinedAt = DateTime.UtcNow;
         await _userManager.UpdateAsync(user);
@@ -209,6 +215,14 @@ internal class UserService : IUserService
         _jobClient.Enqueue<IMailService>(m => m.SendAsync(
             new MailRequest(new List<string> { user.Email! }, "You've been invited to Care Coordination", body),
             CancellationToken.None));
+
+        if (!string.IsNullOrEmpty(user.PhoneNumber))
+        {
+            string smsBody = $"You've been invited to Care Coordination. Set up your account: {link}";
+            _jobClient.Enqueue<ISmsService>(s => s.SendAsync(
+                new SmsRequest(user.PhoneNumber, smsBody),
+                CancellationToken.None));
+        }
     }
 
     private static string GenerateSecureToken()
