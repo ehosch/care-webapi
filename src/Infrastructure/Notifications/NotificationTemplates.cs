@@ -2,27 +2,27 @@ namespace Care.WebApi.Infrastructure.Notifications;
 
 public static class NotificationTemplates
 {
-    public static string ShiftAssignedEmail(DateOnly date) => $"""
-        <p>You're now assigned to a shift on {date:dddd, MMMM d}.</p>
+    public static string ShiftAssignedEmail(DateOnly date, TimeSpan startTime, TimeSpan endTime) => $"""
+        <p>You're now assigned to a shift on {date:dddd, MMMM d}, {FormatTime(startTime)}–{FormatTime(endTime)}.</p>
         """;
 
-    public static string ShiftAssignedSms(DateOnly date) =>
-        $"Care Coordination: you're now assigned to a shift on {date:ddd, MMM d}.";
+    public static string ShiftAssignedSms(DateOnly date, TimeSpan startTime, TimeSpan endTime) =>
+        $"Care Coordination: you're now assigned to a shift on {date:ddd, MMM d}, {FormatTime(startTime)}-{FormatTime(endTime)}.";
 
-    public static string ReplacementRequestedEmail(DateOnly date, string requestedByName, string? reason) => $"""
-        <p>{requestedByName} requested a replacement for their shift on {date:dddd, MMMM d}{(string.IsNullOrEmpty(reason) ? "" : $" — \"{reason}\"")}.</p>
+    public static string ReplacementRequestedEmail(DateOnly date, TimeSpan startTime, TimeSpan endTime, string requestedByName, string? reason) => $"""
+        <p>{requestedByName} requested a replacement for their shift on {date:dddd, MMMM d}, {FormatTime(startTime)}–{FormatTime(endTime)}{(string.IsNullOrEmpty(reason) ? "" : $" — \"{reason}\"")}.</p>
         <p>Open the Replacement Requests page if you're able to cover it.</p>
         """;
 
-    public static string ReplacementRequestedSms(DateOnly date, string requestedByName) =>
-        $"Care Coordination: {requestedByName} needs a replacement for their shift on {date:ddd, MMM d}.";
+    public static string ReplacementRequestedSms(DateOnly date, TimeSpan startTime, TimeSpan endTime, string requestedByName) =>
+        $"Care Coordination: {requestedByName} needs a replacement for their shift on {date:ddd, MMM d}, {FormatTime(startTime)}-{FormatTime(endTime)}.";
 
-    public static string ReplacementClaimedEmail(DateOnly date, string claimedByName) => $"""
-        <p>{claimedByName} has covered your shift on {date:dddd, MMMM d}. You're released from it.</p>
+    public static string ReplacementClaimedEmail(DateOnly date, TimeSpan startTime, TimeSpan endTime, string claimedByName) => $"""
+        <p>{claimedByName} has covered your shift on {date:dddd, MMMM d}, {FormatTime(startTime)}–{FormatTime(endTime)}. You're released from it.</p>
         """;
 
-    public static string ReplacementClaimedSms(DateOnly date, string claimedByName) =>
-        $"Care Coordination: {claimedByName} covered your shift on {date:ddd, MMM d}.";
+    public static string ReplacementClaimedSms(DateOnly date, TimeSpan startTime, TimeSpan endTime, string claimedByName) =>
+        $"Care Coordination: {claimedByName} covered your shift on {date:ddd, MMM d}, {FormatTime(startTime)}-{FormatTime(endTime)}.";
 
     public static string DocumentUploadedEmail(string title, string category, string uploadedByName) => $"""
         <p>{uploadedByName} uploaded a new document: "{title}" ({category}).</p>

@@ -112,7 +112,7 @@ internal class ShiftService : IShiftService
 
         await _db.SaveChangesAsync(cancellationToken);
 
-        await _notificationService.NotifyShiftAssignedAsync(assignedUserId, date, cancellationToken);
+        await _notificationService.NotifyShiftAssignedAsync(assignedUserId, date, startTime, endTime, cancellationToken);
         await FirePendingNotificationsAsync(pendingNotifications, cancellationToken);
 
         return await MapToDtoAsync(shift, cancellationToken);
@@ -135,7 +135,7 @@ internal class ShiftService : IShiftService
         shift.LastModifiedOn = DateTime.UtcNow;
         await _db.SaveChangesAsync(cancellationToken);
 
-        await _notificationService.NotifyShiftAssignedAsync(userId, shift.Date, cancellationToken);
+        await _notificationService.NotifyShiftAssignedAsync(userId, shift.Date, shift.StartTime, shift.EndTime, cancellationToken);
     }
 
     public async Task DeleteShiftAsync(Guid shiftId, CancellationToken cancellationToken)
@@ -261,7 +261,7 @@ internal class ShiftService : IShiftService
         shift.LastModifiedOn = DateTime.UtcNow;
         await _db.SaveChangesAsync(cancellationToken);
 
-        await _notificationService.NotifyReplacementRequestedAsync(shift.Date, requestedByUserId, reason, cancellationToken);
+        await _notificationService.NotifyReplacementRequestedAsync(shift.Date, shift.StartTime, shift.EndTime, requestedByUserId, reason, cancellationToken);
     }
 
     public async Task CancelReplacementRequestAsync(Guid requestId, string requestingUserId, CancellationToken cancellationToken)
@@ -319,7 +319,7 @@ internal class ShiftService : IShiftService
 
         await _db.SaveChangesAsync(cancellationToken);
 
-        await _notificationService.NotifyReplacementClaimedAsync(request.RequestedByUserId, claimingUserId, shift.Date, cancellationToken);
+        await _notificationService.NotifyReplacementClaimedAsync(request.RequestedByUserId, claimingUserId, shift.Date, shift.StartTime, shift.EndTime, cancellationToken);
     }
 
     public async Task<List<ReplacementRequestDto>> GetReplacementQueueAsync(CancellationToken cancellationToken)

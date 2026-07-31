@@ -19,7 +19,7 @@ internal class NotificationService : INotificationService
         _jobClient = jobClient;
     }
 
-    public async Task NotifyShiftAssignedAsync(string userId, DateOnly date, CancellationToken cancellationToken)
+    public async Task NotifyShiftAssignedAsync(string userId, DateOnly date, TimeSpan startTime, TimeSpan endTime, CancellationToken cancellationToken)
     {
         if (await _userManager.FindByIdAsync(userId) is not { } user)
         {
@@ -29,11 +29,11 @@ internal class NotificationService : INotificationService
         EnqueueNotification(
             user,
             "You've been assigned a shift",
-            NotificationTemplates.ShiftAssignedEmail(date),
-            NotificationTemplates.ShiftAssignedSms(date));
+            NotificationTemplates.ShiftAssignedEmail(date, startTime, endTime),
+            NotificationTemplates.ShiftAssignedSms(date, startTime, endTime));
     }
 
-    public async Task NotifyReplacementRequestedAsync(DateOnly date, string requestedByUserId, string? reason, CancellationToken cancellationToken)
+    public async Task NotifyReplacementRequestedAsync(DateOnly date, TimeSpan startTime, TimeSpan endTime, string requestedByUserId, string? reason, CancellationToken cancellationToken)
     {
         string requestedByName = await GetNameAsync(requestedByUserId);
 
@@ -42,12 +42,12 @@ internal class NotificationService : INotificationService
             EnqueueNotification(
                 user,
                 "Replacement requested",
-                NotificationTemplates.ReplacementRequestedEmail(date, requestedByName, reason),
-                NotificationTemplates.ReplacementRequestedSms(date, requestedByName));
+                NotificationTemplates.ReplacementRequestedEmail(date, startTime, endTime, requestedByName, reason),
+                NotificationTemplates.ReplacementRequestedSms(date, startTime, endTime, requestedByName));
         }
     }
 
-    public async Task NotifyReplacementClaimedAsync(string requesterUserId, string claimedByUserId, DateOnly date, CancellationToken cancellationToken)
+    public async Task NotifyReplacementClaimedAsync(string requesterUserId, string claimedByUserId, DateOnly date, TimeSpan startTime, TimeSpan endTime, CancellationToken cancellationToken)
     {
         if (await _userManager.FindByIdAsync(requesterUserId) is not { } requester)
         {
@@ -59,8 +59,8 @@ internal class NotificationService : INotificationService
         EnqueueNotification(
             requester,
             "Your shift replacement was covered",
-            NotificationTemplates.ReplacementClaimedEmail(date, claimedByName),
-            NotificationTemplates.ReplacementClaimedSms(date, claimedByName));
+            NotificationTemplates.ReplacementClaimedEmail(date, startTime, endTime, claimedByName),
+            NotificationTemplates.ReplacementClaimedSms(date, startTime, endTime, claimedByName));
     }
 
     public async Task NotifyDocumentUploadedAsync(string title, string category, string uploadedByUserId, CancellationToken cancellationToken)
