@@ -516,6 +516,65 @@ no self-service equivalent for an already-authenticated user.
   exposed through a new self-scoped `PUT /api/users/me/phone-number`
   route alongside the pre-existing Admin-only `{id}` one.
 
+## Known gotchas from Phase 12 (Invite by phone number only)
+
+An Admin can now create an invite with just a phone number (no email) —
+useful now that SMS is set up via Twilio. Deliberately narrow scope: the
+invitee still sets a real email for themselves on the Register page before
+their account is created, and login stays email+password for everyone —
+no phone-based login, no changes to `TokenService`/password reset/the
+`RequireConfirmedAccount` gate.
+
+- **`Invite` gained `UserId` as its primary lookup key, replacing `Email`**
+  (`Email` is now nullable) — `RegisterAsync` looks up the pending user via
+  `FindByIdAsync(invite.UserId)`, not `FindByEmailAsync(invite.Email)`,
+  since the latter can't work once `Email` is null. A migration
+  (`AddInviteUserId`) backfills `UserId` for existing rows from a join
+  against `AspNetUsers.Email` — purely additive/backfill, no data loss.
+- **`options.User.RequireUniqueEmail` is now `false`** (`Infrastructure/Identity/Startup.cs`).
+  Identity's built-in `UserValidator` otherwise hard-rejects *any* user
+  with a null `Email`, regardless of phone number — this would have
+  blocked every phone-only account outright. Duplicate-email protection
+  is still enforced manually in `CreateInviteAsync`'s existing
+  `FindByEmailAsync(email) is not null` check (unchanged) — a matching
+  manual duplicate-phone check (`Users.AnyAsync(u => u.PhoneNumber == phoneNumber)`)
+  was added for the phone-only path, so no protection was actually lost.
+- **A phone-only invited `ApplicationUser` gets `UserName` set to a
+  sanitized version of the phone number** (strip everything except a
+  leading `+` and digits), not the raw phone string — Identity's default
+  `AllowedUserNameCharacters` rejects spaces/parens/dashes. `Name` is set
+  to the raw phone number as a placeholder, same "placeholder until they
+  register their real name" convention the email path already used.
+- **Setting a user's email post-creation must go through
+  `UserManager.SetEmailAsync`/`SetUserNameAsync`, never direct property
+  assignment** (`user.Email = x`) — direct assignment doesn't update the
+  `NormalizedEmail`/`NormalizedUserName` columns that `FindByEmailAsync`
+  (used by login) actually queries against, so a user could register with
+  their new email and then be unable to log in with it. Caught during
+  implementation, before it shipped — `RegisterAsync`'s phone-only branch
+  uses `SetEmailAsync`/`SetUserNameAsync` for exactly this reason. This
+  gotcha only applies to *already-persisted* users; setting properties
+  directly on a brand-new `ApplicationUser` before `CreateAsync` (as
+  `CreateInviteAsync` does for both the email and phone-only paths) is
+  fine, since `CreateAsync` normalizes both fields itself right before
+  the initial insert.
+- **New `GET /api/users/invite-info?token=` (`[AllowAnonymous]`)** lets the
+  Register page ask, before the user fills anything in, whether the
+  invite already has an email (`RequiresEmail: false`) or needs one
+  collected at registration time (`RequiresEmail: true`). Like every other
+  `[AllowAnonymous]` route, this had to be added to care-wasm's
+  `JwtAuthenticationHeaderHandler.AnonymousPaths` allowlist — missed on
+  the first pass, caught via live testing (a logged-out visitor following
+  a real invite link got force-redirected to `/login` instead of seeing
+  the Register form, since the page's own `GetInviteInfoAsync` call
+  never got a chance to run). See that repo's Phase 1 gotcha for why this
+  allowlist exists at all.
+- **`UserDto.Email` is now `string?`** — a phone-only invited user has no
+  email until they register. `GetUsersAsync`/`GetUserAsync` no longer
+  force-unwrap (`user.Email!`); care-wasm's `Users.razor` shows `"—"` for
+  a null email, matching the existing null-`PhoneNumber` display
+  convention on the same table.
+
 ## Data model
 
 See `../CLAUDE_CARE.md` for the full spec (data model, phased build plan,
@@ -559,4 +618,7 @@ self-service account management (`GET /api/users/me`,
 `POST /api/users/me/change-password`,
 `POST /api/users/me/request-email-change`,
 `POST /api/users/confirm-email-change`) so any logged-in user can manage
-their own email/phone/password without Admin involvement.
+their own email/phone/password without Admin involvement. Phase 12 let
+Admins invite by phone number alone (no email required at invite time) —
+the invitee sets their own email on the Register page before their
+account activates; login stays email+password for everyone.

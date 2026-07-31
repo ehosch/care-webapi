@@ -3,14 +3,24 @@ using System.ComponentModel.DataAnnotations;
 namespace Care.WebApi.Application.Identity.Users;
 
 public record CreateInviteRequest(
-    [Required(ErrorMessage = "Email is required."), EmailAddress(ErrorMessage = "Enter a valid email address.")] string Email,
-    string? PhoneNumber);
+    [EmailAddress(ErrorMessage = "Enter a valid email address.")] string? Email,
+    string? PhoneNumber) : IValidatableObject
+{
+    public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+    {
+        if (string.IsNullOrWhiteSpace(Email) && string.IsNullOrWhiteSpace(PhoneNumber))
+        {
+            yield return new ValidationResult("Provide an email or phone number.");
+        }
+    }
+}
 
 public record RegisterRequest(
     [Required] string Token,
     [Required(ErrorMessage = "Name is required.")] string Name,
     [Required(ErrorMessage = "Password is required."), MinLength(8, ErrorMessage = "Password must be at least 8 characters.")] string Password,
-    string? PhoneNumber);
+    string? PhoneNumber,
+    [EmailAddress(ErrorMessage = "Enter a valid email address.")] string? Email);
 
 public record ChangeUserRoleRequest([Required] string Role);
 

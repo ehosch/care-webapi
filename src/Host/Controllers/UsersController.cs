@@ -104,11 +104,16 @@ public class UsersController : ControllerBase
     }
 
     [AllowAnonymous]
+    [HttpGet("invite-info")]
+    public async Task<ActionResult<InviteInfoDto>> GetInviteInfoAsync(string token, CancellationToken cancellationToken) =>
+        await _userService.GetInviteInfoAsync(token, cancellationToken);
+
+    [AllowAnonymous]
     [HttpPost("register")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<IActionResult> RegisterAsync(RegisterRequest request, CancellationToken cancellationToken)
     {
-        await _userService.RegisterAsync(request.Token, request.Name, request.Password, request.PhoneNumber, cancellationToken);
+        await _userService.RegisterAsync(request.Token, request.Name, request.Password, request.PhoneNumber, request.Email, cancellationToken);
         return Ok();
     }
 

@@ -18,7 +18,10 @@ internal static class Startup
                 options.Password.RequireLowercase = false;
                 options.Password.RequireNonAlphanumeric = false;
                 options.Password.RequireUppercase = false;
-                options.User.RequireUniqueEmail = true;
+                // Identity's own UserValidator rejects a null Email whenever this is true, which
+                // would block phone-only invited accounts regardless of PhoneNumber. Duplicate-email
+                // protection is enforced manually in UserService.CreateInviteAsync instead.
+                options.User.RequireUniqueEmail = false;
             })
             .AddEntityFrameworkStores<ApplicationDbContext>()
             .AddDefaultTokenProviders();

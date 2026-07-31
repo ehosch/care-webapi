@@ -4,7 +4,7 @@ public interface IUserService
 {
     Task<List<UserDto>> GetUsersAsync(CancellationToken cancellationToken);
 
-    Task CreateInviteAsync(string email, string? phoneNumber, string invitedByUserId, string origin, CancellationToken cancellationToken);
+    Task CreateInviteAsync(string? email, string? phoneNumber, string invitedByUserId, string origin, CancellationToken cancellationToken);
 
     Task ResendInviteAsync(string userId, string requestingUserId, string origin, CancellationToken cancellationToken);
 
@@ -12,7 +12,9 @@ public interface IUserService
 
     Task ChangeRoleAsync(string userId, string role, string requestingUserId, CancellationToken cancellationToken);
 
-    Task RegisterAsync(string token, string name, string password, string? phoneNumber, CancellationToken cancellationToken);
+    Task<InviteInfoDto> GetInviteInfoAsync(string token, CancellationToken cancellationToken);
+
+    Task RegisterAsync(string token, string name, string password, string? phoneNumber, string? email, CancellationToken cancellationToken);
 
     Task ForgotPasswordAsync(string email, string origin, CancellationToken cancellationToken);
 

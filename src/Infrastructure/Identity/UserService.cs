@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text.RegularExpressions;
 using Care.WebApi.Application.Common.Exceptions;
 using Care.WebApi.Application.Common.Mailing;
 using Care.WebApi.Application.Common.Sms;
@@ -42,31 +43,57 @@ internal class UserService : IUserService
         foreach (var user in users)
         {
             string role = (await _userManager.GetRolesAsync(user)).FirstOrDefault() ?? "Member";
-            result.Add(new UserDto(user.Id, user.Name, user.Email!, role, user.Status.ToString(), user.InvitedAt, user.JoinedAt, user.PhoneNumber));
+            result.Add(new UserDto(user.Id, user.Name, user.Email, role, user.Status.ToString(), user.InvitedAt, user.JoinedAt, user.PhoneNumber));
         }
 
         return result.OrderBy(u => u.Name).ToList();
     }
 
-    public async Task CreateInviteAsync(string email, string? phoneNumber, string invitedByUserId, string origin, CancellationToken cancellationToken)
+    public async Task CreateInviteAsync(string? email, string? phoneNumber, string invitedByUserId, string origin, CancellationToken cancellationToken)
     {
-        email = email.Trim().ToLowerInvariant();
+        email = string.IsNullOrWhiteSpace(email) ? null : email.Trim().ToLowerInvariant();
+        phoneNumber = string.IsNullOrWhiteSpace(phoneNumber) ? null : phoneNumber;
 
-        if (await _userManager.FindByEmailAsync(email) is not null)
+        ApplicationUser user;
+        if (email is not null)
         {
-            throw new ConflictException("A user with this email already exists.");
+            if (await _userManager.FindByEmailAsync(email) is not null)
+            {
+                throw new ConflictException("A user with this email already exists.");
+            }
+
+            user = new ApplicationUser
+            {
+                UserName = email,
+                Email = email,
+                Name = email,
+                PhoneNumber = phoneNumber,
+                Status = UserStatus.Invited,
+                InvitedAt = DateTime.UtcNow,
+                EmailConfirmed = true
+            };
         }
-
-        var user = new ApplicationUser
+        else
         {
-            UserName = email,
-            Email = email,
-            Name = email,
-            PhoneNumber = string.IsNullOrWhiteSpace(phoneNumber) ? null : phoneNumber,
-            Status = UserStatus.Invited,
-            InvitedAt = DateTime.UtcNow,
-            EmailConfirmed = true
-        };
+            if (await _userManager.Users.AnyAsync(u => u.PhoneNumber == phoneNumber, cancellationToken))
+            {
+                throw new ConflictException("A user with this phone number already exists.");
+            }
+
+            // No email yet — the invitee sets one on the Register page. UserName still has to be
+            // unique and non-null for Identity, so a sanitized phone number stands in for it.
+            string sanitizedPhone = Regex.Replace(phoneNumber!, @"[^\d+]", "");
+            user = new ApplicationUser
+            {
+                UserName = sanitizedPhone,
+                Email = null,
+                Name = phoneNumber!,
+                PhoneNumber = phoneNumber,
+                Status = UserStatus.Invited,
+                InvitedAt = DateTime.UtcNow,
+                EmailConfirmed = false
+            };
+        }
 
         var createResult = await _userManager.CreateAsync(user);
         if (!createResult.Succeeded)
@@ -97,7 +124,7 @@ internal class UserService : IUserService
             throw new ConflictException("This user has already joined; cannot revoke.");
         }
 
-        var invites = _db.Invites.Where(i => i.Email == user.Email && i.UsedAt == null);
+        var invites = _db.Invites.Where(i => i.UserId == user.Id && i.UsedAt == null);
         _db.Invites.RemoveRange(invites);
         await _db.SaveChangesAsync(cancellationToken);
 
@@ -123,7 +150,7 @@ internal class UserService : IUserService
         await _userManager.AddToRoleAsync(user, role);
     }
 
-    public async Task RegisterAsync(string token, string name, string password, string? phoneNumber, CancellationToken cancellationToken)
+    public async Task<InviteInfoDto> GetInviteInfoAsync(string token, CancellationToken cancellationToken)
     {
         var invite = await _db.Invites.FirstOrDefaultAsync(i => i.Token == token, cancellationToken)
             ?? throw new NotFoundException("Invite not found.");
@@ -133,8 +160,44 @@ internal class UserService : IUserService
             throw new ConflictException("This invite has expired or already been used.");
         }
 
-        var user = await _userManager.FindByEmailAsync(invite.Email)
+        return new InviteInfoDto(RequiresEmail: invite.Email is null);
+    }
+
+    public async Task RegisterAsync(string token, string name, string password, string? phoneNumber, string? email, CancellationToken cancellationToken)
+    {
+        var invite = await _db.Invites.FirstOrDefaultAsync(i => i.Token == token, cancellationToken)
+            ?? throw new NotFoundException("Invite not found.");
+
+        if (invite.UsedAt is not null || invite.ExpiresAt < DateTime.UtcNow)
+        {
+            throw new ConflictException("This invite has expired or already been used.");
+        }
+
+        var user = await _userManager.FindByIdAsync(invite.UserId)
             ?? throw new NotFoundException("Invited user not found.");
+
+        if (user.Email is null)
+        {
+            email = string.IsNullOrWhiteSpace(email) ? null : email.Trim().ToLowerInvariant();
+            if (email is null)
+            {
+                throw new ConflictException("Email is required.");
+            }
+
+            if (await _userManager.FindByEmailAsync(email) is not null)
+            {
+                throw new ConflictException("A user with this email already exists.");
+            }
+
+            var setEmailResult = await _userManager.SetEmailAsync(user, email);
+            if (!setEmailResult.Succeeded)
+            {
+                throw new ConflictException(string.Join(" ", setEmailResult.Errors.Select(e => e.Description)));
+            }
+
+            await _userManager.SetUserNameAsync(user, email);
+            user.EmailConfirmed = true;
+        }
 
         var addPasswordResult = await _userManager.AddPasswordAsync(user, password);
         if (!addPasswordResult.Succeeded)
@@ -167,7 +230,7 @@ internal class UserService : IUserService
     {
         var user = await _userManager.FindByIdAsync(userId) ?? throw new NotFoundException("User not found.");
         string role = (await _userManager.GetRolesAsync(user)).FirstOrDefault() ?? "Member";
-        return new UserDto(user.Id, user.Name, user.Email!, role, user.Status.ToString(), user.InvitedAt, user.JoinedAt, user.PhoneNumber);
+        return new UserDto(user.Id, user.Name, user.Email, role, user.Status.ToString(), user.InvitedAt, user.JoinedAt, user.PhoneNumber);
     }
 
     public async Task ChangePasswordAsync(string userId, string currentPassword, string newPassword, CancellationToken cancellationToken)
@@ -252,7 +315,8 @@ internal class UserService : IUserService
         string token = GenerateSecureToken();
         var invite = new Invite
         {
-            Email = user.Email!,
+            UserId = user.Id,
+            Email = user.Email,
             Token = token,
             ExpiresAt = DateTime.UtcNow.AddDays(InviteExpirationDays),
             CreatedByUserId = requestingUserId
@@ -261,14 +325,17 @@ internal class UserService : IUserService
         await _db.SaveChangesAsync(cancellationToken);
 
         string link = $"{origin.TrimEnd('/')}/register?token={Uri.EscapeDataString(token)}";
-        _logger.LogInformation("Invite link for {Email}: {Link}", user.Email, link);
+        _logger.LogInformation("Invite link for {Email}: {Link}", (object?)user.Email ?? user.PhoneNumber, link);
 
         string? patientName = (await _db.AppSettings.FirstOrDefaultAsync(cancellationToken))?.PatientName;
 
-        string body = EmailTemplates.InviteEmail(link, patientName);
-        _jobClient.Enqueue<IMailService>(m => m.SendAsync(
-            new MailRequest(new List<string> { user.Email! }, "You've been invited to Care Coordination", body),
-            CancellationToken.None));
+        if (user.Email is not null)
+        {
+            string body = EmailTemplates.InviteEmail(link, patientName);
+            _jobClient.Enqueue<IMailService>(m => m.SendAsync(
+                new MailRequest(new List<string> { user.Email }, "You've been invited to Care Coordination", body),
+                CancellationToken.None));
+        }
 
         if (!string.IsNullOrEmpty(user.PhoneNumber))
         {
